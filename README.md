@@ -1,2 +1,3 @@
 # Patch
-Bug triage and automated patching for Github repos.
+
+Autonomous GitHub issue triager and patch generator powered by Groq.
