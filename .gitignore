@@ -1,0 +1,16 @@
+# Environment secrets
+.env
+
+# Example env template
+.env.example
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+venv/
+.venv/
+
+# Editor/OS junk
+.DS_Store
