@@ -81,8 +81,8 @@ DASHBOARD_TEMPLATE = """<!DOCTYPE html>
     --text: #e4e4e7;
     --text-muted: #a1a1aa;
     --text-faint: #71717a;
-    --accent: #34d399;
-    --accent-bg: rgba(52, 211, 153, 0.08);
+    --accent: #5147e4;
+    --accent-bg: rgba(81, 71, 228, 0.10);
     --mono: 'Space Grotesk', ui-monospace, monospace;
   }
   * { box-sizing: border-box; }
@@ -107,14 +107,14 @@ DASHBOARD_TEMPLATE = """<!DOCTYPE html>
   input:focus, textarea:focus {
     outline: none;
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.1);
+    box-shadow: 0 0 0 3px rgba(81, 71, 228, 0.12);
   }
   .btn-primary {
     background: var(--accent);
     color: #052e21;
     transition: background .15s;
   }
-  .btn-primary:hover { background: #6ee7b7; }
+  .btn-primary:hover { background: #6d63f0; }
   .btn-primary:disabled { background: #1e293b; color: #64748b; cursor: not-allowed; }
   .btn-ghost {
     background: transparent; color: var(--text-muted);
@@ -187,7 +187,7 @@ document.addEventListener('alpine:init', function () {
           var raw = lines[i];
           var e = this.esc(raw);
           var cls = 'text-zinc-400';
-          if (raw.indexOf('+') === 0 && raw.indexOf('+++') !== 0) cls = 'text-emerald-400 bg-emerald-500/5';
+          if (raw.indexOf('+') === 0 && raw.indexOf('+++') !== 0) cls = 'text-violet-400 bg-violet-500/5';
           else if (raw.indexOf('-') === 0 && raw.indexOf('---') !== 0) cls = 'text-rose-400 bg-rose-500/5';
           else if (raw.indexOf('@@') === 0 || raw.indexOf('---') === 0 || raw.indexOf('+++') === 0) cls = 'text-sky-400 font-medium';
           out.push('<span class="' + cls + '">' + e + '</span>');
@@ -472,7 +472,7 @@ window.refreshIcons = function () {
               <span class="w-14 shrink-0 text-zinc-700" x-text="line.time"></span>
               <span class="shrink-0 w-4 text-center"
                     :class="{
-                      'text-emerald-500': line.kind === 'ok',
+                      'text-violet-400': line.kind === 'ok',
                       'text-rose-500': line.kind === 'err',
                       'text-zinc-500': line.kind === 'run',
                       'text-zinc-700': line.kind === 'info'
@@ -480,7 +480,7 @@ window.refreshIcons = function () {
                     x-text="line.kind === 'ok' ? '✓' : line.kind === 'err' ? '✕' : line.kind === 'run' ? '⟳' : '›'"></span>
               <span class="break-all"
                     :class="{
-                      'text-zinc-300': line.kind === 'ok',
+                      'text-zinc-200': line.kind === 'ok',
                       'text-rose-400': line.kind === 'err',
                       'text-zinc-500': line.kind === 'run',
                       'text-zinc-600': line.kind === 'info'
@@ -497,7 +497,7 @@ window.refreshIcons = function () {
           <div class="flex items-center justify-between mb-4">
             <h2 class="text-[13px] font-medium tracking-tight text-zinc-200">Generated diff</h2>
             <div class="flex items-center gap-3 font-mono text-[11px]">
-              <span class="text-emerald-500" x-text="'+' + diffStats.add"></span>
+              <span class="text-violet-400" x-text="'+' + diffStats.add"></span>
               <span class="text-rose-500" x-text="'-' + diffStats.del"></span>
               <button @click="copyPatch" type="button"
                       class="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-800
@@ -533,7 +533,7 @@ window.refreshIcons = function () {
                   class="rounded-lg px-4 py-2 text-[13px] font-medium btn-ghost">Track</button>
         </div>
         <p x-cloak x-show="trackMsg" class="mt-3 text-[11px] font-mono"
-           :class="trackMsgOk ? 'text-emerald-500' : 'text-rose-400'" x-text="trackMsg"></p>
+           :class="trackMsgOk ? 'text-violet-400' : 'text-rose-400'" x-text="trackMsg"></p>
       </section>
 
       <section class="card p-6">
@@ -571,7 +571,7 @@ window.refreshIcons = function () {
                      x-text="f.repo + ' · ' + f.file_path + ' · ' + fmtTime(f.timestamp)"></div>
               </div>
               <a :href="f.pr_url" target="_blank" rel="noopener"
-                 class="shrink-0 font-mono text-[11px] text-emerald-500 hover:text-emerald-400 transition">PR →</a>
+                 class="shrink-0 font-mono text-[11px] text-violet-400 hover:text-violet-300 transition">PR →</a>
             </div>
             <details class="mt-2">
               <summary class="text-[11px] text-zinc-500 hover:text-zinc-300 cursor-pointer transition select-none">diff</summary>
