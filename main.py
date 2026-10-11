@@ -1,6 +1,7 @@
 import html
 import asyncio
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
@@ -14,6 +15,8 @@ import core.tracker
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Auto-triage feed: hook the tracker so polled issues land in /api/fixes.
+    core.tracker.on_fix_callback = _record_fix
     core.tracker.load_registry()
     poller_task = asyncio.create_task(core.tracker.poll_forever(30))
     try:
@@ -208,6 +211,100 @@ DASHBOARD_TEMPLATE = r"""<!DOCTYPE html>
     </section>
   </template>
 
+  <!-- Auto-Track Repository -->
+  <section class="mt-10 rounded-xl border border-slate-800 bg-slate-900/60 p-6">
+    <div class="mb-4 flex items-center justify-between">
+      <h2 class="flex items-center gap-2 font-mono text-xs uppercase tracking-widest text-slate-500">
+        <i data-lucide="radio-tower" class="h-4 w-4 text-sky-400"></i> Auto-Track Repository
+      </h2>
+      <span class="text-[11px] text-slate-600">polls every 30s</span>
+    </div>
+    <div class="flex gap-3">
+      <div class="relative flex-1">
+        <i data-lucide="github" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500"></i>
+        <input x-model.trim="trackRepo" type="text" placeholder="owner/repo"
+               class="w-full rounded-lg border border-slate-700 bg-slate-800/70 py-2.5 pl-10 pr-3
+                      text-sm font-mono placeholder-slate-600 outline-none
+                      focus:border-sky-600 focus:ring-1 focus:ring-sky-600/40"
+               @keydown.enter.prevent="startTracking()" />
+      </div>
+      <button type="button" @click="startTracking()" :disabled="trackingBusy"
+              class="flex items-center gap-2 rounded-lg border border-sky-600/50 bg-sky-600/10 px-4
+                     py-2.5 text-sm font-medium text-sky-400 transition hover:bg-sky-600/20
+                     disabled:cursor-not-allowed disabled:opacity-40">
+        <i data-lucide="play" class="h-4 w-4"></i> Start Tracking
+      </button>
+    </div>
+    <p x-show="trackMsg" x-text="trackMsg" class="mt-3 text-xs"
+       :class="trackOk ? 'text-emerald-400' : 'text-rose-400'"></p>
+  </section>
+
+  <!-- Currently Monitored Repositories -->
+  <section class="mt-8">
+    <h2 class="mb-3 flex items-center gap-2 font-mono text-xs uppercase tracking-widest text-slate-500">
+      <i data-lucide="monitor-dot" class="h-4 w-4 text-emerald-400"></i> Currently Monitored Repositories
+    </h2>
+    <div class="space-y-2">
+      <template x-for="r in tracked" :key="r.repo">
+        <div class="flex items-center justify-between rounded-lg border border-slate-800
+                    bg-slate-900/60 px-4 py-3">
+          <div class="flex items-center gap-3">
+            <span class="inline-flex items-center gap-1.5 rounded-full border border-emerald-700/60
+                        bg-emerald-900/20 px-2.5 py-0.5 text-[11px] font-mono text-emerald-400">
+              <span class="h-1.5 w-1.5 rounded-full bg-emerald-400 badge-glow"></span> Active
+            </span>
+            <span class="font-mono text-sm text-slate-200" x-text="r.repo"></span>
+          </div>
+          <div class="flex items-center gap-4">
+            <span class="text-[11px] text-slate-500 font-mono"
+                  x-text="'since ' + (new Date(r.added_at)).toLocaleTimeString()"></span>
+            <button type="button" @click="untrackRepo(r.repo)"
+                    class="rounded-md border border-slate-700 px-2 py-1 text-[11px]
+                           text-slate-400 transition hover:border-rose-700/60 hover:text-rose-400">
+              <i data-lucide="trash-2" class="h-3 w-3 inline"></i> untrack
+            </button>
+          </div>
+        </div>
+      </template>
+      <p x-show="!tracked.length" class="text-sm text-slate-600">
+        No repositories tracked yet — add one above to arm the auto-triage loop.
+      </p>
+    </div>
+  </section>
+
+  <!-- Recent Automated Fixes -->
+  <section class="mt-8">
+    <h2 class="mb-3 flex items-center gap-2 font-mono text-xs uppercase tracking-widest text-slate-500">
+      <i data-lucide="zap" class="h-4 w-4 text-amber-400"></i> Recent Automated Fixes
+    </h2>
+    <div class="space-y-2">
+      <template x-for="(f, i) in fixes" :key="f.timestamp + i">
+        <div class="rounded-lg border border-slate-800 bg-slate-900/60 px-4 py-3">
+          <div class="flex items-center justify-between gap-4">
+            <div class="min-w-0">
+              <div class="truncate text-sm text-slate-200" x-text="f.issue_title"></div>
+              <div class="mt-0.5 font-mono text-[11px] text-slate-500"
+                   x-text="f.repo + ' · ' + f.file_path"></div>
+            </div>
+            <a :href="f.pr_url" target="_blank" rel="noopener"
+               class="shrink-0 inline-flex items-center gap-1.5 rounded-md border
+                      border-emerald-700/50 bg-emerald-900/20 px-2.5 py-1 text-[11px]
+                      font-mono text-emerald-400 hover:bg-emerald-900/40">
+              <i data-lucide="git-pull-request-arrow" class="h-3 w-3"></i> PR
+            </a>
+          </div>
+          <details class="mt-2">
+            <summary class="cursor-pointer text-[11px] text-slate-500 hover:text-slate-400">show diff</summary>
+            <pre class="language-diff mt-2"><code class="language-diff" x-text="f.patch"></code></pre>
+          </details>
+        </div>
+      </template>
+      <p x-show="!fixes.length" class="text-sm text-slate-600">
+        No fixes generated yet in this session — they will appear here automatically.
+      </p>
+    </div>
+  </section>
+
   <footer class="mt-12 border-t border-slate-800 pt-6 text-center text-xs text-slate-600">
     Patch · powered by Groq &amp; PyGithub
   </footer>
@@ -219,6 +316,8 @@ DASHBOARD_TEMPLATE = r"""<!DOCTYPE html>
       state: 'idle', // idle | running | success | error
       form: { repo: '', path: '', title: '', context: '' },
       logs: [], diff: '', prUrl: '', highlightedDiff: '',
+      trackRepo: '', trackMsg: '', trackOk: false, trackingBusy: false,
+      tracked: [], fixes: [],
 
       log(kind, text) {
         this.logs.push({ kind, text });
@@ -265,10 +364,57 @@ DASHBOARD_TEMPLATE = r"""<!DOCTYPE html>
         })
         .catch(e => { this.state = 'error'; this.log('err', String(e)); });
       },
+
+      async startTracking() {
+        this.trackMsg = '';
+        if (!this.trackRepo) { this.trackMsg = 'enter owner/repo first'; this.trackOk = false; return; }
+        this.trackingBusy = true;
+        try {
+          const r = await fetch('/api/track', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ repo: this.trackRepo }),
+          });
+          const j = await r.json();
+          if (r.ok) {
+            this.trackOk = true;
+            this.trackMsg = `now tracking ${this.trackRepo} — auto-triage armed`;
+            this.trackRepo = ''
+          } else {
+            this.trackOk = false;
+            this.trackMsg = j.detail ?? 'failed to track';
+          }
+        } catch (e) { this.trackOk = false; this.trackMsg = String(e); }
+        this.trackingBusy = false;
+        const ctx = Alpine.$data(document.body);
+        const t = await fetch('/api/tracked').then(r => r.json());
+        ctx.tracked = t.tracked ?? [];
+      },
+
+      async untrackRepo(repo) {
+        await fetch(`/api/track/${repo.split('/')[0]}/${repo.split('/')[1]}`, { method: 'DELETE' });
+        const t = await fetch('/api/tracked').then(r => r.json());
+        Alpine.$data(document.body).tracked = t.tracked ?? [];
+      },
     };
   }
 
-  document.addEventListener('DOMContentLoaded', () => lucide.createIcons());
+  document.addEventListener('DOMContentLoaded', () => {
+    lucide.createIcons();
+    const ctx = Alpine.$data(document.body);
+    const refresh = async () => {
+      try {
+        const [t, f] = await Promise.all([
+          fetch('/api/tracked').then(r => r.json()),
+          fetch('/api/fixes').then(r => r.json()),
+        ]);
+        ctx.tracked = t.tracked ?? [];
+        ctx.fixes = f.fixes ?? [];
+      } catch (e) { /* dashboard polling is best-effort */ }
+    };
+    refresh();
+    setInterval(refresh, 10000);
+  });
   // Re-render icons whenever Alpine injects new <i data-lucide> nodes.
   const observer = new MutationObserver(() => lucide.createIcons());
   observer.observe(document.body, { childList: true, subtree: true });
@@ -285,6 +431,34 @@ def dashboard() -> HTMLResponse:
 
 class TrackRequest(BaseModel):
     repo: str
+
+
+# In-memory feed of automated fixes (newest first). Not persisted: survives
+# only for this process lifetime, which is fine for a local dashboard.
+_fixes_feed: list[dict] = []
+
+
+def _record_fix(
+    repo: str, file_path: str, issue_title: str, patch: str, pr_url: str,
+) -> None:
+    """Insert one dashboard-visible fix entry, capped to the last 50."""
+    _fixes_feed.insert(
+        0,
+        {
+            "repo": repo,
+            "file_path": file_path,
+            "issue_title": issue_title,
+            "patch": patch,
+            "pr_url": pr_url,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        },
+    )
+    del _fixes_feed[50:]
+
+
+@app.get("/api/fixes")
+def api_fixes():
+    return {"fixes": _fixes_feed}
 
 
 @app.post("/api/track")
@@ -328,6 +502,10 @@ def trigger_fix(payload: IssuePayload):
         pull_request_url = core.pr_creator.apply_patch_and_create_pr(
             payload.repo_name, payload.file_path, patch, ref=payload.ref,
             original_content=file_content,
+        )
+        _record_fix(
+            payload.repo_name, payload.file_path, payload.issue_title, patch,
+            pull_request_url,
         )
         return {"status": "success", "pull_request_url": pull_request_url, "patch": patch}
     except HTTPException:

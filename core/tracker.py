@@ -269,6 +269,9 @@ def process_issue(issue, ref: str) -> str:
 # Poll loop
 # --------------------------------------------------------------------------
 
+on_fix_callback = None  # optional hook (repo, file_path, issue_title, patch, pr_url)
+
+
 async def poll_once() -> None:
     """Single polling pass over every tracked repo, triaging new issues."""
     loop = asyncio.get_running_loop()
@@ -288,6 +291,23 @@ async def poll_once() -> None:
                     pr_url = await loop.run_in_executor(None, process_issue, issue, ref)
                     await loop.run_in_executor(None, post_issue_comment, issue, pr_url)
                     mark_processed(repo_name, issue.number)
+                    if on_fix_callback:
+                        # Pull the generated patch text back for the feed.
+                        patch_text = ""
+                        try:
+                            pr = _gh().get_repo(repo_name).get_pull(
+                                int(pr_url.rstrip('/').split('/')[-1])
+                            )
+                            patch_text = f"{pr.title}\n{pr.html_url}"
+                        except Exception:
+                            pass
+                        on_fix_callback(
+                            repo_name,
+                            getattr(issue, 'file_path_hint', '(auto-picked)'),
+                            issue.title,
+                            patch_text,
+                            pr_url,
+                        )
                     print(f"[tracker]   #{issue.number}: done, commented, recorded")
                 except Exception as exc:  # noqa: BLE001 - one issue must not stop the rest
                     print(
