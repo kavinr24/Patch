@@ -15,6 +15,13 @@ _groq = Groq(api_key=config.GROQ_API_KEY)
 
 _MODEL = "qwen/qwen3.8-27b"
 
+# Free-tier Groq enforces output-tokens-per-minute (OTPM) limits (e.g. 1000
+# on qwen3.8-27b); keep the default below it and allow override via env.
+try:
+    _MAX_TOKENS = int(os.getenv("GROQ_MAX_TOKENS", "900"))
+except (TypeError, ValueError):
+    _MAX_TOKENS = 900
+
 _SYSTEM_PROMPT = (
     "You are an expert software engineer. You receive the current contents of a "
     "single source file and a description of a bug or issue in that file. "
@@ -44,7 +51,7 @@ def generate_patch(file_path: str, file_content: str, error_context: str) -> str
                 {"role": "user", "content": user_prompt},
             ],
             temperature=0.2,
-            max_tokens=2048,
+            max_tokens=_MAX_TOKENS,
         )
     except Exception as exc:
         raise RuntimeError(f"Groq API call failed: {exc}") from exc

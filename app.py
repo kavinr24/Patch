@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import streamlit as st
-from github import Github
+from github import Github, Auth
 
 import config
 import core.analyzer
@@ -34,8 +34,13 @@ def resolve_ref(repo_name: str, ref: str) -> str:
     """Return the branch to use: the given one, or the repo's default branch."""
     if ref.strip():
         return ref.strip()
-    gh = Github(config.GITHUB_TOKEN)
+    gh = Github(auth=Auth.Token(config.GITHUB_TOKEN))
     return gh.get_repo(repo_name).default_branch
+
+
+def _gh_client() -> Github:
+    """GitHub client using the non-deprecated auth interface."""
+    return Github(auth=Auth.Token(config.GITHUB_TOKEN))
 
 
 with st.sidebar:
@@ -49,7 +54,7 @@ with st.sidebar:
     ref_auto, file_choices = None, None
     if repo_name.strip():
         try:
-            gh = Github(config.GITHUB_TOKEN)
+            gh = _gh_client()
             repo = gh.get_repo(repo_name.strip())
             ref_auto = repo.default_branch
             file_choices = [

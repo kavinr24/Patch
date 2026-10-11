@@ -16,7 +16,7 @@ import subprocess
 import tempfile
 import time
 
-from github import Github
+from github import Github, Auth
 
 import config
 
@@ -42,6 +42,7 @@ def _ensure_fork(gh: Github, upstream) -> object:
         # Fork creation is asynchronous on GitHub's side; poll briefly.
         try:
             fork = upstream.create_fork()
+        except Exception:
             for attempt in range(10):
                 try:
                     return gh.get_repo(fork_full_name)
@@ -224,7 +225,7 @@ def apply_patch_and_create_pr(
     if not patched_content.strip():
         raise RuntimeError("Refusing to create a PR from an empty diff")
 
-    gh = Github(config.GITHUB_TOKEN)
+    gh = Github(auth=Auth.Token(config.GITHUB_TOKEN))
     upstream = gh.get_repo(repo_name)
     fork = _ensure_fork(gh, upstream)
 
