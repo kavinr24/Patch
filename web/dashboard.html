@@ -28,9 +28,13 @@
     --text-muted: #a1a1aa;
     --text-faint: #71717a;
     --accent: #8b85f4;
+    --accent-2: #a29df7;
+    --accent-glow: rgba(139, 133, 244, 0.35);
     --accent-bg: rgba(139, 133, 244, 0.10);
-    --mono: 'Space Grotesk', ui-monospace, monospace;
+    --ease-out: cubic-bezier(.2, .8, .2, 1);
+    --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
   }
+
   * { box-sizing: border-box; }
   html, body {
     background: var(--bg);
@@ -38,45 +42,265 @@
     font-family: 'Space Grotesk', system-ui, sans-serif;
   }
   [x-cloak] { display: none !important; }
-  .card {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 12px;
+
+  /* ---------- Ambient background ---------- */
+  .aurora {
+    position: fixed; inset: 0; z-index: -2; overflow: hidden; pointer-events: none;
   }
+  .aurora .blob {
+    position: absolute; border-radius: 50%; filter: blur(90px); opacity: .32;
+    animation: drift 22s ease-in-out infinite alternate;
+  }
+  .aurora .b1 { width: 520px; height: 520px; background: #6d5cf6; top: -160px; left: -120px; }
+  .aurora .b2 { width: 460px; height: 460px; background: #1d4ed8; top: 30%; right: -160px; animation-duration: 28s; animation-delay: -6s; }
+  .aurora .b3 { width: 380px; height: 380px; background: #7c3aed; bottom: -120px; left: 35%; animation-duration: 26s; animation-delay: -12s; opacity: .22; }
+  @keyframes drift {
+    0%   { transform: translate(0, 0) scale(1); }
+    50%  { transform: translate(70px, 40px) scale(1.12); }
+    100% { transform: translate(-40px, 70px) scale(.95); }
+  }
+  .grid-bg {
+    position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background-image:
+      linear-gradient(rgba(148, 163, 184, .045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(148, 163, 184, .045) 1px, transparent 1px);
+    background-size: 44px 44px;
+    -webkit-mask-image: radial-gradient(ellipse at top, #000 20%, transparent 75%);
+            mask-image: radial-gradient(ellipse at top, #000 20%, transparent 75%);
+    animation: gridmove 40s linear infinite;
+  }
+  @keyframes gridmove { to { background-position: 44px 44px; } }
+
+  /* ---------- Cards ---------- */
+  .card {
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(180deg, rgba(17, 26, 44, .88), rgba(13, 18, 32, .94));
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    backdrop-filter: blur(8px);
+    transition: transform .45s var(--ease-out), border-color .4s, box-shadow .45s var(--ease-out);
+  }
+  .card:hover {
+    border-color: rgba(139, 133, 244, .32);
+    box-shadow: 0 18px 50px -20px rgba(139, 133, 244, .35);
+  }
+  /* cursor-following spotlight */
+  .card::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
+    background: radial-gradient(360px circle at var(--mx, 50%) var(--my, 0%), rgba(139, 133, 244, .12), transparent 60%);
+    opacity: 0; transition: opacity .5s;
+  }
+  .card:hover::after { opacity: 1; }
+  .card > * { position: relative; }
+
+  /* entrance: staggered via --d */
+  .enter {
+    animation: rise .8s var(--ease-out) backwards;
+    animation-delay: calc(var(--d, 0) * 90ms);
+  }
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(22px) scale(.975); filter: blur(6px); }
+    to   { opacity: 1; transform: none; filter: none; }
+  }
+
+  /* ---------- Inputs ---------- */
   input, textarea {
-    background: var(--panel-2);
+    background: rgba(17, 26, 44, .7);
     border: 1px solid var(--border);
     color: var(--text);
-    transition: border-color .15s, box-shadow .15s;
+    transition: border-color .2s, box-shadow .3s, background .2s;
   }
+  input:hover, textarea:hover { border-color: var(--border-2); }
   input::placeholder, textarea::placeholder { color: var(--text-faint); }
   input:focus, textarea:focus {
     outline: none;
+    background: rgba(17, 26, 44, .95);
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(139, 133, 244, 0.14);
+    box-shadow: 0 0 0 4px rgba(139, 133, 244, .15), 0 0 24px -6px var(--accent-glow);
   }
+  .field-label {
+    display: block; font-size: 11px; font-weight: 500; color: var(--text-muted);
+    margin-bottom: 6px; letter-spacing: .02em; transition: color .2s;
+  }
+  label:focus-within > .field-label { color: var(--accent-2); }
+
+  /* ---------- Buttons ---------- */
   .btn-primary {
-    background: var(--accent);
-    color: #0d1220;
-    transition: background .15s;
+    position: relative; overflow: hidden; isolation: isolate;
+    background: linear-gradient(135deg, #a29df7 0%, #7c75f0 100%);
+    color: #0b0f1a;
+    box-shadow: 0 10px 30px -10px rgba(139, 133, 244, .7), inset 0 1px 0 rgba(255,255,255,.25);
+    transition: transform .25s var(--ease-out), box-shadow .35s, filter .25s;
   }
-  .btn-primary:hover { background: #a29df7; }
-  .btn-primary:disabled { background: #1e293b; color: #64748b; cursor: not-allowed; }
+  .btn-primary::after {
+    content: ''; position: absolute; inset: 0; z-index: -1;
+    background: linear-gradient(110deg, transparent 30%, rgba(255,255,255,.45) 50%, transparent 70%);
+    transform: translateX(-120%);
+  }
+  .btn-primary:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 16px 40px -10px rgba(139, 133, 244, .85), inset 0 1px 0 rgba(255,255,255,.3);
+    filter: brightness(1.05);
+  }
+  .btn-primary:hover:not(:disabled)::after { animation: sweep 1s var(--ease-out); }
+  .btn-primary:active:not(:disabled) { transform: translateY(0) scale(.98); }
+  .btn-primary:disabled {
+    background: #1e293b; color: #64748b; cursor: not-allowed; box-shadow: none;
+  }
+  .btn-primary:disabled::after { display: none; }
+  @keyframes sweep { to { transform: translateX(120%); } }
+
   .btn-ghost {
     background: transparent; color: var(--text-muted);
     border: 1px solid var(--border-2);
-    transition: background .15s, color .15s;
+    transition: background .25s, color .25s, border-color .25s, transform .2s var(--ease-out);
   }
-  .btn-ghost:hover { background: var(--panel-2); color: var(--text); }
+  .btn-ghost:hover { background: var(--panel-2); color: var(--text); border-color: rgba(139,133,244,.4); }
+  .btn-ghost:active { transform: scale(.97); }
+
+  .icon-btn {
+    transition: transform .2s var(--ease-spring), color .2s, border-color .2s, background .2s;
+  }
+  .icon-btn:hover { transform: scale(1.04); }
+  .icon-btn:active { transform: scale(.94); }
+
+  /* animated gradient border on the primary CTA's container */
+  .glow-ring { position: relative; }
+  .glow-ring::before {
+    content: ''; position: absolute; inset: -1px; border-radius: 17px; z-index: -1; opacity: 0;
+    background: conic-gradient(from var(--angle, 0deg), transparent, var(--accent), transparent 35%);
+    transition: opacity .5s;
+    animation: spin-border 4s linear infinite;
+  }
+  .card:hover .glow-ring::before, .glow-ring:focus-within::before { opacity: .55; }
+  @property --angle { syntax: '<angle>'; initial-value: 0deg; inherits: false; }
+  @keyframes spin-border { to { --angle: 360deg; } }
+
+  /* ---------- Nav / brand ---------- */
+  .brand-mark {
+    position: relative;
+    animation: float 5s ease-in-out infinite;
+  }
+  .brand-mark::after {
+    content: ''; position: absolute; inset: -6px; border-radius: 50%;
+    background: radial-gradient(circle, var(--accent-glow), transparent 70%);
+    animation: pulse-glow 3s ease-in-out infinite; z-index: -1;
+  }
+  @keyframes float { 50% { transform: translateY(-2px) rotate(-2deg); } }
+  @keyframes pulse-glow { 50% { opacity: .35; transform: scale(1.15); } }
+
+  .title-gradient {
+    background: linear-gradient(90deg, #e4e4e7 0%, #c4c0ff 40%, #e4e4e7 60%);
+    background-size: 200% auto;
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    animation: shine 6s linear infinite;
+  }
+  @keyframes shine { to { background-position: 200% center; } }
+
+  /* ---------- Status / badges ---------- */
   .badge {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 4px 10px; border-radius: 999px;
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 5px 12px; border-radius: 999px;
     font-size: 11px; font-weight: 500;
     border: 1px solid var(--border);
+    background: rgba(13, 18, 32, .6);
+    transition: color .3s, border-color .3s, background .3s;
   }
+
+  /* ---------- Stat tiles ---------- */
+  .stat-num {
+    font-variant-numeric: tabular-nums;
+    animation: bump .55s var(--ease-spring);
+  }
+  @keyframes bump {
+    0%   { transform: translateY(8px) scale(.8); opacity: 0; }
+    100% { transform: none; opacity: 1; }
+  }
+
+  /* ---------- Running state ---------- */
+  .run-track {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 2px; overflow: hidden;
+    background: rgba(139, 133, 244, .12);
+  }
+  .run-track::after {
+    content: ''; position: absolute; top: 0; bottom: 0; width: 40%;
+    background: linear-gradient(90deg, transparent, #c4c0ff, transparent);
+    animation: slide 1.3s var(--ease-out) infinite;
+  }
+  @keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
+  .spin { animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .live-dot { position: relative; display: inline-flex; width: 8px; height: 8px; }
+  .live-dot::before, .live-dot::after {
+    content: ''; position: absolute; inset: 0; border-radius: 50%;
+  }
+  .live-dot::before { background: var(--accent); }
+  .live-dot::after { background: var(--accent); animation: ping 1.4s var(--ease-out) infinite; }
+  @keyframes ping { 0% { transform: scale(1); opacity: .7; } 100% { transform: scale(3); opacity: 0; } }
+
+  .cursor::after {
+    content: '▋'; margin-left: 2px; color: var(--accent-2);
+    animation: blink 1s steps(2, start) infinite;
+  }
+  @keyframes blink { to { visibility: hidden; } }
+
+  /* ---------- Log ---------- */
+  .log-line { animation: log-in .5s var(--ease-out) backwards; }
+  @keyframes log-in {
+    from { opacity: 0; transform: translateX(-12px); filter: blur(3px); }
+    to   { opacity: 1; transform: none; filter: none; }
+  }
+  .log-ok  { animation: pop .5s var(--ease-spring); }
+  @keyframes pop { 0% { transform: scale(.4); } 100% { transform: scale(1); } }
+
+  /* ---------- Diff ---------- */
+  .reveal { animation: reveal .8s var(--ease-out) both; }
+  @keyframes reveal {
+    from { opacity: 0; clip-path: inset(0 0 100% 0); filter: blur(4px); }
+    to   { opacity: 1; clip-path: inset(0 0 0 0);    filter: none; }
+  }
+  .stat-bump { display: inline-block; animation: bump .45s var(--ease-spring); }
+  .diff-pre {
+    background: #070b13 !important;
+    border: 1px solid #1e293b;
+    transition: border-color .3s, box-shadow .3s;
+  }
+  .diff-pre:hover { border-color: #2a3a55; box-shadow: inset 0 0 0 1px rgba(139,133,244,.05); }
+
+  /* ---------- Lists ---------- */
+  .list-in { animation: list-in .6s var(--ease-out) backwards; }
+  @keyframes list-in {
+    from { opacity: 0; transform: translateX(-14px); }
+    to   { opacity: 1; transform: none; }
+  }
+  .row {
+    transition: background .25s, padding .3s var(--ease-out);
+    border-radius: 10px;
+  }
+  .row:hover { background: rgba(139, 133, 244, .05); padding-left: 10px; padding-right: 10px; }
+  .dot-live {
+    width: 6px; height: 6px; border-radius: 50%; background: #34d399;
+    box-shadow: 0 0 10px #34d399; animation: breathe 2.4s ease-in-out infinite;
+  }
+  @keyframes breathe { 50% { opacity: .45; box-shadow: 0 0 2px #34d399; } }
+
+  .link-glow { transition: color .25s, text-shadow .3s; }
+  .link-glow:hover { text-shadow: 0 0 12px var(--accent-glow); }
+
   .scrollbar-thin::-webkit-scrollbar { width: 6px; height: 6px; }
   .scrollbar-thin::-webkit-scrollbar-thumb { background: #2d3a4d; border-radius: 3px; }
   .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: .01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: .01ms !important;
+    }
+    .aurora .blob, .grid-bg { animation: none; }
+  }
 </style>
 
 <!-- Register the Alpine component BEFORE the Alpine CDN script executes -->
@@ -105,7 +329,7 @@ document.addEventListener('alpine:init', function () {
       // ---------------- derived ----------------
       get diffStats() {
         var text = this.diffText || '';
-        var lines = text.split('\\n');
+        var lines = text.split('\n');
         var add = 0, del = 0;
         for (var i = 0; i < lines.length; i++) {
           var l = lines[i];
@@ -128,17 +352,17 @@ document.addEventListener('alpine:init', function () {
       // ---------------- helpers ----------------
       fallbackHighlight(text) {
         var out = [];
-        var lines = String(text).split('\\n');
+        var lines = String(text).split('\n');
         for (var i = 0; i < lines.length; i++) {
           var raw = lines[i];
           var e = this.esc(raw);
           var cls = 'text-zinc-400';
-          if (raw.indexOf('+') === 0 && raw.indexOf('+++') !== 0) cls = 'text-violet-300 bg-violet-500/8';
+          if (raw.indexOf('+') === 0 && raw.indexOf('+++') !== 0) cls = 'text-violet-300 bg-violet-500/10';
           else if (raw.indexOf('-') === 0 && raw.indexOf('---') !== 0) cls = 'text-rose-400 bg-rose-500/5';
           else if (raw.indexOf('@@') === 0 || raw.indexOf('---') === 0 || raw.indexOf('+++') === 0) cls = 'text-sky-400 font-medium';
           out.push('<span class="' + cls + '">' + e + '</span>');
         }
-        return out.join('\\n');
+        return out.join('\n');
       },
       esc(s) {
         return String(s == null ? '' : s)
@@ -147,10 +371,9 @@ document.addEventListener('alpine:init', function () {
       },
       log(kind, text) {
         this.logLines.push({ kind: kind, text: text, time: new Date().toLocaleTimeString() });
-        var self = this;
         this.$nextTick(function () {
           var box = document.getElementById('logbox');
-          if (box) box.scrollTop = box.scrollHeight;
+          if (box) box.scrollTo({ top: box.scrollHeight, behavior: 'smooth' });
           window.refreshIcons && window.refreshIcons();
         });
       },
@@ -229,8 +452,6 @@ document.addEventListener('alpine:init', function () {
           window.refreshIcons && window.refreshIcons();
         });
       },
-
-      runInProgress(idx) { return this.logLines[idx] && this.logLines[idx].kind === 'run'; },
 
       // ---------------- diff / clipboard ----------------
       copyPatch() {
@@ -333,11 +554,20 @@ document.addEventListener('alpine:init', function () {
 window.refreshIcons = function () {
   try { if (window.lucide && lucide.createIcons) lucide.createIcons(); } catch (e) {}
 };
+
+// Cursor-following spotlight for cards
+document.addEventListener('pointermove', function (e) {
+  var c = e.target && e.target.closest ? e.target.closest('.card') : null;
+  if (!c) return;
+  var r = c.getBoundingClientRect();
+  c.style.setProperty('--mx', (e.clientX - r.left) + 'px');
+  c.style.setProperty('--my', (e.clientY - r.top) + 'px');
+});
 </script>
 
 <!-- CDN scripts (deferred; boot after DOM is parsed) -->
-<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-<script defer src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+<script defer src="https://unpkg.com/lucide@0.383.0/dist/umd/lucide.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-diff.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/line-numbers/prism-line-numbers.min.js"></script>
@@ -345,80 +575,140 @@ window.refreshIcons = function () {
 </head>
 <body class="min-h-screen antialiased" style="background:#090d16">
 
-<div x-data="patchDashboard" class="max-w-6xl mx-auto px-6 pb-8">
+<div class="aurora" aria-hidden="true">
+  <div class="blob b1"></div>
+  <div class="blob b2"></div>
+  <div class="blob b3"></div>
+</div>
+<div class="grid-bg" aria-hidden="true"></div>
+
+<div x-data="patchDashboard" class="max-w-6xl mx-auto px-6 pb-10">
 
   <!-- ============ Top nav ============ -->
-  <nav class="sticky top-0 z-30 -mx-6 px-6 py-4 mb-10 flex items-center justify-between
-              border-b border-slate-800 bg-[#090d16]/90 backdrop-blur">
+  <nav class="enter sticky top-0 z-30 -mx-6 px-6 py-4 mb-10 flex items-center justify-between
+              border-b border-white/5 bg-[#090d16]/70 backdrop-blur-xl" style="--d:0">
     <div class="flex items-center gap-3">
-      <img src="/icon.png" alt="Patch" class="h-7 w-7">
+      <div class="brand-mark">
+        <img src="/icon.png" alt="Patch" class="h-7 w-7 relative">
+      </div>
       <span class="text-[15px] font-semibold tracking-tight text-zinc-100">Patch</span>
     </div>
-    <div class="flex items-center gap-6 text-[13px] text-zinc-500">
-      <span class="hidden sm:inline">Autonomous issue triage</span>
+    <div class="flex items-center gap-4 text-[13px] text-zinc-500">
+      <span class="hidden md:inline">Autonomous issue triage</span>
+      <span class="badge"
+            :class="backendOnline === null ? 'text-zinc-500' : backendOnline ? 'text-emerald-300 border-emerald-500/25' : 'text-rose-300 border-rose-500/25'">
+        <span class="relative flex h-2 w-2">
+          <span class="absolute inline-flex h-full w-full rounded-full opacity-60 animate-ping"
+                :class="backendOnline ? 'bg-emerald-400' : backendOnline === false ? 'bg-rose-400' : 'bg-zinc-500'"></span>
+          <span class="relative inline-flex h-2 w-2 rounded-full"
+                :class="backendOnline ? 'bg-emerald-400' : backendOnline === false ? 'bg-rose-400' : 'bg-zinc-500'"></span>
+        </span>
+        <span>Online</span>
+      </span>
     </div>
   </nav>
+
+  <!-- ============ Hero ============ -->
+  <header class="enter mb-10 flex flex-col md:flex-row md:items-end md:justify-between gap-6" style="--d:1">
+    <div>
+      <h1 class="title-gradient text-[34px] md:text-[42px] font-bold tracking-tight leading-none">Dashboard</h1>
+      <p class="text-[13px] text-zinc-500 mt-3">Fetch a file, generate a diff with Groq, and open a PR automatically.</p>
+    </div>
+    <div class="flex gap-3">
+      <div class="card px-5 py-3 min-w-[120px]">
+        <div class="text-[10px] uppercase tracking-widest text-zinc-500">Tracked</div>
+        <div class="text-2xl font-semibold text-zinc-100 mt-1">
+          <template x-for="n in [tracked.length]" :key="'t' + n">
+            <span class="stat-num inline-block" x-text="n"></span>
+          </template>
+        </div>
+      </div>
+      <div class="card px-5 py-3 min-w-[120px]">
+        <div class="text-[10px] uppercase tracking-widest text-zinc-500">Fixes</div>
+        <div class="text-2xl font-semibold text-zinc-100 mt-1">
+          <template x-for="n in [fixes.length]" :key="'f' + n">
+            <span class="stat-num inline-block" x-text="n"></span>
+          </template>
+        </div>
+      </div>
+    </div>
+  </header>
 
   <div class="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
 
     <!-- ======== LEFT (Manual Patch Generation, 3 cols) ======== -->
     <div class="lg:col-span-3 space-y-6">
 
-      <section class="card p-6">
-        <h2 class="text-[13px] font-medium tracking-tight text-zinc-200 mb-1">Manual patch generation</h2>
-        <p class="text-[12px] text-zinc-500 mb-6">Fetch a file, generate a diff with Groq, and open a PR automatically.</p>
+      <section class="card p-6 enter" style="--d:2">
+        <div class="flex items-center gap-2 mb-1">
+          <i data-lucide="wand-sparkles" class="w-4 h-4 text-violet-300"></i>
+          <h2 class="text-[14px] font-semibold tracking-tight text-zinc-100">Manual patch generation</h2>
+        </div>
+        <p class="text-[12px] text-zinc-500 mb-6">Describe the bug and let the model write the fix.</p>
 
         <form @submit.prevent="submitPatch" class="space-y-5">
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <label class="block">
-              <span class="block text-[11px] font-medium text-zinc-500 mb-1.5">GitHub repository</span>
+              <span class="field-label">GitHub repository</span>
               <input x-model="form.repo" placeholder="owner/repo" autocomplete="off"
-                     class="w-full rounded-lg px-3 py-2 text-[13px] font-mono placeholder-zinc-600">
+                     class="w-full rounded-xl px-3.5 py-2.5 text-[13px] font-mono placeholder-zinc-600">
             </label>
             <label class="block">
-              <span class="block text-[11px] font-medium text-zinc-500 mb-1.5">Target file path</span>
+              <span class="field-label">Target file path</span>
               <input x-model="form.filePath" placeholder="src/main.py" autocomplete="off"
-                     class="w-full rounded-lg px-3 py-2 text-[13px] font-mono placeholder-zinc-600">
+                     class="w-full rounded-xl px-3.5 py-2.5 text-[13px] font-mono placeholder-zinc-600">
             </label>
           </div>
           <label class="block">
-            <span class="block text-[11px] font-medium text-zinc-500 mb-1.5">Issue title</span>
+            <span class="field-label">Issue title</span>
             <input x-model="form.issueTitle" placeholder="Crash when name is None" autocomplete="off"
-                   class="w-full rounded-lg px-3 py-2 text-[13px] placeholder-zinc-600">
+                   class="w-full rounded-xl px-3.5 py-2.5 text-[13px] placeholder-zinc-600">
           </label>
           <label class="block">
-            <span class="block text-[11px] font-medium text-zinc-500 mb-1.5">Description / traceback</span>
+            <span class="field-label">Description / traceback</span>
             <textarea x-model="form.errorContext" rows="5" placeholder="Paste the error, repro steps, or what should change…"
-                      class="w-full rounded-lg px-3 py-2 text-[13px] font-mono placeholder-zinc-600 resize-y"></textarea>
+                      class="w-full rounded-xl px-3.5 py-2.5 text-[13px] font-mono placeholder-zinc-600 resize-y"></textarea>
           </label>
           <div class="grid grid-cols-1 sm:grid-cols-5 gap-4 items-end">
             <label class="block sm:col-span-2">
-              <span class="block text-[11px] font-medium text-zinc-500 mb-1.5">
+              <span class="field-label">
                 Base branch <span class="text-zinc-700">(optional)</span>
               </span>
               <input x-model="form.ref" placeholder="main" autocomplete="off"
-                     class="w-full rounded-lg px-3 py-2 text-[13px] font-mono placeholder-zinc-600">
+                     class="w-full rounded-xl px-3.5 py-2.5 text-[13px] font-mono placeholder-zinc-600">
             </label>
             <button type="submit" :disabled="running"
-                    class="sm:col-span-3 inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5
-                           text-[13px] font-semibold btn-primary">
+                    class="btn-primary sm:col-span-3 relative inline-flex items-center justify-center gap-2 rounded-xl px-4 py-3
+                           text-[13px] font-semibold">
+              <span x-show="running" x-cloak class="inline-flex"><i data-lucide="loader-circle" class="w-4 h-4 spin"></i></span>
+              <span x-show="!running" class="inline-flex"><i data-lucide="sparkles" class="w-4 h-4"></i></span>
               <span x-text="running ? 'Running…' : 'Generate Patch & Open PR'"></span>
+              <span x-show="running" x-cloak class="run-track rounded-b-xl"></span>
             </button>
           </div>
         </form>
       </section>
 
       <!-- Execution log -->
-      <section x-cloak x-show="logLines.length" class="card p-6">
-        <h2 class="text-[13px] font-medium tracking-tight text-zinc-200 mb-4">Execution log</h2>
-        <div id="logbox" class="h-48 overflow-y-auto scrollbar-thin rounded-lg border border-slate-800 p-3"
+      <section x-cloak x-show="logLines.length" class="card p-6"
+               x-transition:enter="transition duration-500 ease-out"
+               x-transition:enter-start="opacity-0 -translate-y-3"
+               x-transition:enter-end="opacity-100 translate-y-0">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-2.5">
+            <span x-show="running" x-cloak class="live-dot"></span>
+            <h2 class="text-[14px] font-semibold tracking-tight text-zinc-100">Execution log</h2>
+          </div>
+          <span class="text-[10px] font-mono text-zinc-600" x-text="running ? 'live' : 'idle'"></span>
+        </div>
+        <div id="logbox" class="h-48 overflow-y-auto scrollbar-thin rounded-xl border border-slate-800/80 p-3"
              style="background:#070b13">
           <template x-for="(line, idx) in logLines" :key="idx">
-            <div class="flex items-start gap-3 font-mono text-[11px] py-0.5">
+            <div class="log-line flex items-start gap-3 font-mono text-[11px] py-0.5">
               <span class="w-14 shrink-0 text-zinc-700" x-text="line.time"></span>
               <span class="shrink-0 w-4 text-center"
                     :class="{
-                      'text-violet-300': line.kind === 'ok',
+                      'text-violet-300 log-ok': line.kind === 'ok',
                       'text-rose-500': line.kind === 'err',
                       'text-zinc-500': line.kind === 'run',
                       'text-zinc-700': line.kind === 'info'
@@ -429,7 +719,8 @@ window.refreshIcons = function () {
                       'text-zinc-200': line.kind === 'ok',
                       'text-rose-400': line.kind === 'err',
                       'text-zinc-500': line.kind === 'run',
-                      'text-zinc-600': line.kind === 'info'
+                      'text-zinc-600': line.kind === 'info',
+                      'cursor': running && idx === logLines.length - 1
                     }"
                     x-text="line.text"></span>
             </div>
@@ -438,78 +729,106 @@ window.refreshIcons = function () {
       </section>
 
       <!-- Generated diff -->
-      <section x-cloak x-show="showDiff" class="space-y-4">
+      <section x-cloak x-show="showDiff" class="space-y-4"
+               x-transition:enter="transition duration-500 ease-out"
+               x-transition:enter-start="opacity-0 translate-y-4"
+               x-transition:enter-end="opacity-100 translate-y-0">
         <div class="card p-6">
           <div class="flex items-center justify-between mb-4">
-            <h2 class="text-[13px] font-medium tracking-tight text-zinc-200">Generated diff</h2>
+            <h2 class="text-[14px] font-semibold tracking-tight text-zinc-100">Generated diff</h2>
             <div class="flex items-center gap-3 font-mono text-[11px]">
-              <span class="text-violet-300" x-text="'+' + diffStats.add"></span>
-              <span class="text-rose-500" x-text="'-' + diffStats.del"></span>
+              <template x-for="n in [diffStats.add]" :key="'a' + n">
+                <span class="stat-bump text-violet-300" x-text="'+' + n"></span>
+              </template>
+              <template x-for="n in [diffStats.del]" :key="'d' + n">
+                <span class="stat-bump text-rose-500" x-text="'-' + n"></span>
+              </template>
               <button @click="copyPatch" type="button"
-                      class="inline-flex items-center gap-1 px-2 py-1 rounded-md border border-slate-800
-                             text-zinc-400 hover:text-zinc-200 hover:border-slate-700 text-[11px] transition">
-                <span x-text="copied ? 'Copied' : 'Copy'"></span>
+                      class="icon-btn inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-700
+                             text-zinc-400 hover:text-zinc-200 hover:border-violet-400/40 text-[11px]">
+                <span x-text="copied ? '✓ Copied' : 'Copy'"></span>
               </button>
             </div>
           </div>
-          <pre class="line-numbers max-h-80 overflow-auto scrollbar-thin rounded-lg p-4 text-xs"
-               style="background:#070b13; border: 1px solid #1e293b"><code class="language-diff" x-html="highlightedDiff"></code></pre>
+          <div class="reveal">
+            <pre class="diff-pre line-numbers max-h-80 overflow-auto scrollbar-thin rounded-xl p-4 text-xs"><code class="language-diff" x-html="highlightedDiff"></code></pre>
+          </div>
         </div>
 
         <a x-cloak x-show="prUrl" :href="prUrl" target="_blank" rel="noopener"
-           class="card inline-flex items-center justify-center gap-2 w-full px-4 py-3 text-[13px]
-                  font-medium text-zinc-200 hover:text-white hover:border-slate-700 transition">
+           class="card group inline-flex items-center justify-center gap-2 w-full px-4 py-3.5 text-[13px]
+                  font-medium text-zinc-200 hover:text-white hover:-translate-y-0.5 transition-transform duration-300">
+          <i data-lucide="git-pull-request" class="w-4 h-4 text-violet-300 group-hover:rotate-12 transition-transform duration-300"></i>
           <span>View Pull Request</span>
           <span class="font-mono text-zinc-500" x-text="prNumber()"></span>
+          <i data-lucide="arrow-up-right" class="w-3.5 h-3.5 text-zinc-500 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform duration-300"></i>
         </a>
       </section>
     </div>
 
-    <!-- ======== RIGHT (Auto-Track + Monitored, 2 cols) ======== -->
+    <!-- ======== RIGHT (Auto-Track + Monitored + Fixes, 2 cols) ======== -->
     <div class="lg:col-span-2 space-y-6">
 
-      <section class="card p-6">
-        <h2 class="text-[13px] font-medium tracking-tight text-zinc-200 mb-1">Auto-track repository</h2>
+      <section class="card p-6 enter" style="--d:3">
+        <div class="flex items-center gap-2 mb-1">
+          <i data-lucide="radar" class="w-4 h-4 text-violet-300"></i>
+          <h2 class="text-[14px] font-semibold tracking-tight text-zinc-100">Auto-track repository</h2>
+        </div>
         <p class="text-[12px] text-zinc-500 mb-5">Scan tracked repos for new issues every 30 seconds.</p>
 
         <div class="flex gap-2">
           <input x-model="trackRepo" @keydown.enter="addTrack" placeholder="owner/repo" autocomplete="off"
-                 class="flex-1 rounded-lg px-3 py-2 text-[13px] font-mono placeholder-zinc-600">
+                 class="flex-1 rounded-xl px-3.5 py-2.5 text-[13px] font-mono placeholder-zinc-600">
           <button @click="addTrack" type="button"
-                  class="rounded-lg px-4 py-2 text-[13px] font-medium btn-ghost">Track</button>
+                  class="btn-ghost icon-btn inline-flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-[13px] font-medium">
+            <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+            <span>Track</span>
+          </button>
         </div>
-        <p x-cloak x-show="trackMsg" class="mt-3 text-[11px] font-mono"
+        <p x-cloak x-show="trackMsg" x-transition.opacity.duration.300ms class="mt-3 text-[11px] font-mono"
            :class="trackMsgOk ? 'text-violet-300' : 'text-rose-400'" x-text="trackMsg"></p>
       </section>
 
-      <section class="card p-6">
-        <h2 class="text-[13px] font-medium tracking-tight text-zinc-200 mb-5">Monitored repositories</h2>
+      <section class="card p-6 enter" style="--d:4">
+        <div class="flex items-center justify-between mb-5">
+          <h2 class="text-[14px] font-semibold tracking-tight text-zinc-100">Monitored repositories</h2>
+          <span class="text-[10px] font-mono text-zinc-600" x-text="tracked.length + ' active'"></span>
+        </div>
 
         <template x-if="!tracked.length">
-          <p class="text-[12px] text-zinc-600 text-center py-8">No repositories tracked yet.</p>
+          <p class="text-[12px] text-zinc-600 text-center py-8 enter">No repositories tracked yet.</p>
         </template>
 
         <template x-for="rec in tracked" :key="rec.repo">
-          <div class="flex items-center justify-between gap-3 py-2.5 border-b border-slate-800 last:border-b-0">
-            <div class="min-w-0">
-              <div class="font-mono text-[12px] text-zinc-300 truncate" x-text="rec.repo"></div>
-              <div class="text-[10px] text-zinc-600 mt-0.5" x-text="'since ' + fmtTime(rec.added_at)"></div>
+          <div class="row list-in flex items-center justify-between gap-3 py-2.5 px-1 border-b border-slate-800/80 last:border-b-0"
+               x-transition:leave="transition duration-300 ease-in"
+               x-transition:leave-start="opacity-100 max-h-20"
+               x-transition:leave-end="opacity-0 -translate-x-4 max-h-0 py-0 border-0">
+            <div class="min-w-0 flex items-center gap-3">
+              <span class="dot-live shrink-0"></span>
+              <div class="min-w-0">
+                <div class="font-mono text-[12px] text-zinc-300 truncate" x-text="rec.repo"></div>
+                <div class="text-[10px] text-zinc-600 mt-0.5" x-text="'since ' + fmtTime(rec.added_at)"></div>
+              </div>
             </div>
             <button @click="untrack(rec.repo)" type="button"
-                    class="shrink-0 text-[11px] text-zinc-600 hover:text-rose-400 transition">Remove</button>
+                    class="shrink-0 text-[11px] text-zinc-600 hover:text-rose-400 transition-colors duration-200">Remove</button>
           </div>
         </template>
       </section>
 
-      <section class="card p-6">
-        <h2 class="text-[13px] font-medium tracking-tight text-zinc-200 mb-5">Recent fixes</h2>
+      <section class="card p-6 enter" style="--d:5">
+        <div class="flex items-center justify-between mb-5">
+          <h2 class="text-[14px] font-semibold tracking-tight text-zinc-100">Recent fixes</h2>
+        </div>
 
         <template x-if="!fixes.length">
           <p class="text-[12px] text-zinc-600 text-center py-8">No fixes generated yet.</p>
         </template>
 
         <template x-for="(f, idx) in fixes" :key="idx">
-          <div class="py-3 border-b border-slate-800 last:border-b-0">
+          <div class="list-in row py-3 px-1 border-b border-slate-800/80 last:border-b-0"
+               :style="'animation-delay:' + (idx * 60) + 'ms'">
             <div class="flex items-start justify-between gap-3">
               <div class="min-w-0">
                 <div class="text-[12px] font-medium text-zinc-300 truncate" x-text="f.issue_title"></div>
@@ -517,12 +836,11 @@ window.refreshIcons = function () {
                      x-text="f.repo + ' · ' + f.file_path + ' · ' + fmtTime(f.timestamp)"></div>
               </div>
               <a :href="f.pr_url" target="_blank" rel="noopener"
-                 class="shrink-0 font-mono text-[11px] text-violet-300 hover:text-violet-200 transition">PR →</a>
+                 class="link-glow shrink-0 font-mono text-[11px] text-violet-300 hover:text-violet-200">PR →</a>
             </div>
-            <details class="mt-2">
-              <summary class="text-[11px] text-zinc-500 hover:text-zinc-300 cursor-pointer transition select-none">diff</summary>
-              <pre class="mt-2 max-h-52 overflow-auto scrollbar-thin rounded-md p-2.5 font-mono text-[10px] whitespace-pre text-zinc-500"
-                   style="background:#070b13; border: 1px solid #1e293b"
+            <details class="mt-2 group">
+              <summary class="text-[11px] text-zinc-500 hover:text-zinc-300 cursor-pointer transition-colors select-none">diff</summary>
+              <pre class="mt-2 max-h-52 overflow-auto scrollbar-thin rounded-lg p-2.5 font-mono text-[10px] whitespace-pre text-zinc-500 diff-pre"
                    x-text="(f.patch || '').slice(0, 2000) || '(fetched live)'"></pre>
             </details>
           </div>
@@ -532,9 +850,25 @@ window.refreshIcons = function () {
   </div>
 
   <!-- ============ Footer ============ -->
-  <footer class="mt-14 pt-6 border-t border-slate-800 flex items-center justify-between">
+  <footer class="enter mt-14 pt-6 border-t border-white/5 flex items-center justify-between" style="--d:6">
     <p class="text-[11px] text-zinc-600">© 2026 Patch. All rights reserved.</p>
   </footer>
+
+  <!-- ============ Toast ============ -->
+  <div x-cloak x-show="toastVisible"
+       x-transition:enter="transition ease-out duration-400"
+       x-transition:enter-start="opacity-0 translate-y-6 scale-95"
+       x-transition:enter-end="opacity-100 translate-y-0 scale-100"
+       x-transition:leave="transition ease-in duration-250"
+       x-transition:leave-start="opacity-100 translate-y-0"
+       x-transition:leave-end="opacity-0 translate-y-4"
+       class="fixed bottom-6 right-6 z-50 card flex items-center gap-3 px-4 py-3 shadow-2xl">
+    <span class="flex h-6 w-6 items-center justify-center rounded-full"
+          :class="toastOk ? 'bg-violet-500/20 text-violet-300' : 'bg-rose-500/20 text-rose-400'">
+      <span class="text-[12px] font-bold" x-text="toastOk ? '✓' : '✕'"></span>
+    </span>
+    <span class="text-[13px] text-zinc-200" x-text="toastMsg"></span>
+  </div>
 </div>
 
 <script>
