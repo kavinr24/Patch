@@ -45,18 +45,37 @@ with st.sidebar:
         placeholder="owner/repo",
         help="Any public GitHub repository, e.g. octocat/Hello-World.",
     )
-    file_path = st.text_input(
-        "File path",
-        placeholder="README.md",
-        help="The file in the repo the patch should modify.",
-    )
+
+    ref_auto, file_choices = None, None
+    if repo_name.strip():
+        try:
+            gh = Github(config.GITHUB_TOKEN)
+            repo = gh.get_repo(repo_name.strip())
+            ref_auto = repo.default_branch
+            file_choices = [
+                c.path for c in repo.get_contents("", ref=ref_auto) if c.type == "file"
+            ]
+        except Exception as exc:
+            st.warning(f"Could not list repo contents: {exc}")
+
     ref = st.text_input(
         "Base branch",
-        value="",
+        value=ref_auto or "",
         placeholder="auto-detect default branch",
         help="Leave empty to auto-detect the repo's default branch "
         "(or enter one explicitly: main, master, ...).",
     )
+    if file_choices:
+        file_path = st.selectbox(
+            "File path (picked from the repo root)",
+            options=file_choices,
+        )
+    else:
+        file_path = st.text_input(
+            "File path",
+            placeholder="README.md",
+            help="Enter the repo-relative path of the file to patch.",
+        )
     st.divider()
     st.markdown(
         "**Pipeline**\n"
@@ -87,7 +106,7 @@ if go:
     st.divider()
 
     try:
-        ref = resolve_ref(repo_name, ref)
+        ref = resolve_ref(repo_name, ref_auto or ref)
         with st.status(f"Running pipeline… (branch: {ref})", expanded=False) as status:
             st.write(f"Fetching `{file_path}` from `{repo_name}` (ref `{ref}`)…")
             file_content = core.fetcher.get_file_content(repo_name, file_path, ref=ref)
