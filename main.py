@@ -357,8 +357,8 @@ window.refreshIcons = function () {
                  bg-slate-900/80 backdrop-blur border-b border-slate-800
                  flex items-center justify-between gap-4">
     <div class="flex items-center gap-3">
-        <img src="/icon.png" alt="Patch logo" class="h-9 w-9 rounded-lg
-                    shadow-[0_0_18px_rgba(16,185,129,.35)] border border-slate-700">
+        <img src="/icon.png" alt="Patch logo" class="h-9 w-9
+                    shadow-[0_0_18px_rgba(16,185,129,.35)]">
       <div>
         <h1 class="text-lg font-semibold tracking-tight leading-none">Patch</h1>
         <p class="text-[11px] text-slate-500 mt-0.5">Autonomous GitHub issue triage &amp; patch generation</p>
