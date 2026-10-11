@@ -82,7 +82,7 @@ DASHBOARD_TEMPLATE = r"""<!DOCTYPE html>
   </style>
 </head>
 
-<body x-data="patch()" class="grain min-h-screen bg-slate-950 text-slate-100
+<body x-data="patchDashboard" class="grain min-h-screen bg-slate-950 text-slate-100
      font-sans antialiased selection:bg-emerald-500/30">
 
 <div class="relative z-10 mx-auto max-w-4xl px-6 py-12">
@@ -311,9 +311,10 @@ DASHBOARD_TEMPLATE = r"""<!DOCTYPE html>
 </div>
 
 <script>
-  // NOTE: must stay a zero-arg function Alpine can call as x-data.
-  window.patch = function patch() {
-    return {
+  // Register the component through Alpine's official API — robust against
+  // load-order issues that previously left the page half-initialized.
+  document.addEventListener('alpine:init', () => {
+    Alpine.data('patchDashboard', () => ({
       state: 'idle', // idle | running | success | error
       form: { repo: '', path: '', title: '', context: '' },
       logs: [], diff: '', prUrl: '', highlightedDiff: '',
@@ -387,45 +388,39 @@ DASHBOARD_TEMPLATE = r"""<!DOCTYPE html>
           }
         } catch (e) { this.trackOk = false; this.trackMsg = String(e); }
         this.trackingBusy = false;
-        const ctx = Alpine.$data(document.body);
-        const t = await fetch('/api/tracked').then(r => r.json());
-        ctx.tracked = t.tracked ?? [];
+        await this.refreshTracking();
       },
 
       async untrackRepo(repo) {
         await fetch(`/api/track/${repo.split('/')[0]}/${repo.split('/')[1]}`, { method: 'DELETE' });
-        const t = await fetch('/api/tracked').then(r => r.json());
-        Alpine.$data(document.body).tracked = t.tracked ?? [];
+        await this.refreshTracking();
       },
-    };
-  }
 
-  // Alpine is defer-loaded: wait for 'alpine:init' (NOT DOMContentLoaded)
-  // before touching the Alpine global, otherwise $data() throws and the
-  // whole script dies, leaving the page half-initialized.
-  document.addEventListener('alpine:init', () => {
-    if (window.lucide) lucide.createIcons();
-    Alpine.effect(() => {
-      const ctx = Alpine.$data(document.body);
-      if (!ctx) return;
-      const refresh = async () => {
+      async refreshTracking() {
         try {
           const [t, f] = await Promise.all([
             fetch('/api/tracked').then(r => r.json()),
             fetch('/api/fixes').then(r => r.json()),
           ]);
-          ctx.tracked = t.tracked ?? [];
-          ctx.fixes = f.fixes ?? [];
-        } catch (e) { /* dashboard polling is best-effort */ }
-      };
-      refresh();
-      setInterval(refresh, 10000);
-    });
+          this.tracked = t.tracked ?? [];
+          this.fixes = f.fixes ?? [];
+        } catch (e) { /* best-effort */ }
+      },
+    }));
   });
-  // Re-render icons whenever Alpine injects new <i data-lucide> nodes.
+
+  // Initial icon pass + one initial tracking refresh once Alpine is up.
   document.addEventListener('DOMContentLoaded', () => {
-    try { lucide.createIcons(); } catch (e) { /* CDN not ready */ }
+    try { if (window.lucide) lucide.createIcons(); } catch (e) { /* CDN not ready */ }
+    setTimeout(() => {
+      try {
+        const ctx = Alpine.$data(document.body);
+        if (ctx && ctx.refreshTracking) ctx.refreshTracking();
+      } catch (e) { /* Alpine not ready yet, poller below covers it */ }
+    }, 100);
   });
+
+  // Re-render icons whenever Alpine injects new <i data-lucide> nodes.
   const observer = new MutationObserver(() => {
     if (window.lucide && document.body) lucide.createIcons();
   });
