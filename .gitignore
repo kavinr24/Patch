@@ -1,9 +1,6 @@
 # Environment secrets
 .env
 
-# Example env template
-.env.example
-
 # Python bytecode and caches
 __pycache__/
 *.py[cod]
