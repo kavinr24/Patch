@@ -595,16 +595,6 @@ document.addEventListener('pointermove', function (e) {
     </div>
     <div class="flex items-center gap-4 text-[13px] text-zinc-500">
       <span class="hidden md:inline">Autonomous issue triage</span>
-      <span class="badge"
-            :class="backendOnline === null ? 'text-zinc-500' : backendOnline ? 'text-emerald-300 border-emerald-500/25' : 'text-rose-300 border-rose-500/25'">
-        <span class="relative flex h-2 w-2">
-          <span class="absolute inline-flex h-full w-full rounded-full opacity-60 animate-ping"
-                :class="backendOnline ? 'bg-emerald-400' : backendOnline === false ? 'bg-rose-400' : 'bg-zinc-500'"></span>
-          <span class="relative inline-flex h-2 w-2 rounded-full"
-                :class="backendOnline ? 'bg-emerald-400' : backendOnline === false ? 'bg-rose-400' : 'bg-zinc-500'"></span>
-        </span>
-        <span>Online</span>
-      </span>
     </div>
   </nav>
 
@@ -612,7 +602,7 @@ document.addEventListener('pointermove', function (e) {
   <header class="enter mb-10 flex flex-col md:flex-row md:items-end md:justify-between gap-6" style="--d:1">
     <div>
       <h1 class="title-gradient text-[34px] md:text-[42px] font-bold tracking-tight leading-none">Dashboard</h1>
-      <p class="text-[13px] text-zinc-500 mt-3">Fetch a file, generate a diff with Groq, and open a PR automatically.</p>
+      <p class="text-[13px] text-zinc-500 mt-3">Fetch a file, generate a diff, and open a PR automatically.</p>
     </div>
     <div class="flex gap-3">
       <div class="card px-5 py-3 min-w-[120px]">
