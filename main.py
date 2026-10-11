@@ -15,7 +15,6 @@ import core.tracker
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Auto-triage feed: hook the tracker so polled issues land in /api/fixes.
     core.tracker.on_fix_callback = _record_fix
     core.tracker.load_registry()
     poller_task = asyncio.create_task(core.tracker.poll_forever(30))
@@ -41,401 +40,451 @@ class IssuePayload(BaseModel):
 
 
 def _dashboard_html() -> str:
-    return DASHBOARD_TEMPLATE.replace("__ESCAPED_TITLE__", html.escape(app.title))
+    return DASHBOARD_TEMPLATE
 
 
-DASHBOARD_TEMPLATE = r"""<!DOCTYPE html>
-<html lang="en" class="dark">
+# ---------------------------------------------------------------------------
+# Dashboard: ZERO external dependencies. Plain HTML + inline <style> + inline
+# vanilla <script>. No Tailwind, no Alpine, no Lucide, no Prism, no CDN -- so
+# nothing can fail to load or half-hydrate in the browser.
+# ---------------------------------------------------------------------------
+
+DASHBOARD_TEMPLATE = """<!DOCTYPE html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="color-scheme" content="dark" />
-  __ESCAPED_TITLE__
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      theme: { extend: { fontFamily: { mono: ['"JetBrains Mono"', 'monospace'] } } }
-    };
-  </script>
-  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-  <script src="https://unpkg.com/lucide@latest"></script>
-  <link href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
-  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/prism.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/components/prism-diff.min.js"></script>
-  <style>
-    [x-cloak] { display: none !important; }
-    @keyframes pulseGlow {
-      0%, 100% { box-shadow: 0 0 8px 0 rgba(52, 211, 153, 0.35); }
-      50%      { box-shadow: 0 0 16px 2px rgba(52, 211, 153, 0.55); }
-    }
-    .badge-glow  { animation: pulseGlow 1.6s ease-in-out infinite; }
-    .grain::before {
-      content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
-      background: radial-gradient(ellipse at 20% 10%, rgba(56, 189, 248, 0.07), transparent 55%),
-                  radial-gradient(ellipse at 85% 90%, rgba(52, 211, 153, 0.06), transparent 50%);
-    }
-    pre[class*="language-"] {
-      background: #1b1f2a !important; border: 1px solid #334155; border-radius: 0.5rem;
-      font-size: 0.8rem; max-height: 22rem; overflow: auto;
-    }
-    .token.regex .double-slash { color: #f59e0b !important; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark">
+<title>Patch</title>
+<style>
+  :root {
+    --bg: #0f172a;           /* slate-950 */
+    --panel: #1e293b;        /* slate-800 */
+    --border: #334155;       /* slate-700 */
+    --text: #f1f5f9;         /* slate-100 */
+    --muted: #94a3b8;        /* slate-400 */
+    --faint: #64748b;        /* slate-500 */
+    --accent: #34d399;       /* emerald-400 */
+    --accent-dim: rgba(52, 211, 153, 0.12);
+    --blue: #38bdf8;         /* sky-400 */
+    --rose: #fb7185;         /* rose-400 */
+    --mono: 'Consolas', 'Cascadia Code', 'JetBrains Mono', monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, 'Segoe UI', Roboto, sans-serif;
+    min-height: 100vh; line-height: 1.5;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 40px 20px; position: relative; z-index: 1; }
+
+  /* Header */
+  header { display: flex; justify-content: space-between; align-items: center;
+           border-bottom: 1px solid var(--border); padding-bottom: 20px; margin-bottom: 28px; }
+  h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.5px; color: var(--text); }
+  .tagline { color: var(--faint); font-size: 13px; margin-top: 2px; }
+  .pill {
+    border: 1px solid rgba(52,211,153,.4); color: var(--accent);
+    background: var(--accent-dim); border-radius: 999px; padding: 4px 12px;
+    font-size: 11px; font-family: var(--mono);
+    animation: glow 1.8s ease-in-out infinite;
+  }
+  @keyframes glow {
+    0%, 100% { box-shadow: 0 0 6px rgba(52,211,153,.25); }
+    50%      { box-shadow: 0 0 14px rgba(52,211,153,.55); }
+  }
+
+  /* Cards */
+  .card {
+    background: rgba(30,41,59,.6); border: 1px solid var(--border);
+    border-radius: 10px; padding: 22px; margin-bottom: 22px;
+  }
+  .card h2 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 1.4px;
+    color: var(--faint); margin-bottom: 14px; font-weight: 600;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .row { display: flex; gap: 10px; }
+  .row > * { flex: 1; }
+  label { display: block; margin-bottom: 14px; }
+  label span { display: block; font-size: 11px; color: var(--muted); margin-bottom: 5px; font-weight: 500; }
+  input, textarea {
+    width: 100%; background: rgba(15,23,42,.7); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 9px 12px; font-size: 13px; font-family: inherit;
+    outline: none; transition: border-color .15s;
+  }
+  input:focus, textarea:focus { border-color: var(--accent); }
+  input.mono, textarea.mono { font-family: var(--mono); }
+  textarea { resize: vertical; min-height: 120px; }
+
+  button {
+    cursor: pointer; border: 1px solid rgba(52,211,153,.5);
+    background: var(--accent-dim); color: var(--accent);
+    border-radius: 8px; padding: 10px 18px; font-size: 13px; font-weight: 600;
+    transition: background .15s; width: 100%;
+  }
+  button:hover { background: rgba(52,211,153,.22); }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button.small { width: auto; padding: 6px 14px; font-size: 11px; }
+  button.blue { border-color: rgba(56,189,248,.5); background: rgba(56,189,248,.12); color: var(--blue); }
+  button.blue:hover { background: rgba(56,189,248,.22); }
+
+  .hint { font-size: 11px; color: var(--faint); margin-top: 8px; }
+  .error-text { color: var(--rose); font-size: 12px; margin-top: 8px; display: none; }
+  .error-text.show { display: block; }
+  .ok-text { color: var(--accent); font-size: 12px; margin-top: 8px; display: none; }
+  .ok-text.show { display: block; }
+
+  /* Log box */
+  #logbox {
+    background: rgba(0,0,0,.4); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px; height: 200px; overflow-y: auto; display: none;
+  }
+  #logbox.show { display: block; }
+  .logline { font-family: var(--mono); font-size: 12px; padding: 2px 0; color: var(--muted); }
+  .logline .k { display: inline-block; width: 16px; }
+  .logline.ok .k { color: var(--accent); }
+  .logline.err .k { color: var(--rose); }
+  .logline.run .k { color: var(--blue); }
+  .spin { display: inline-block; animation: rotate 1.4s linear infinite; }
+  @keyframes rotate { from { transform: rotate(0deg);} to { transform: rotate(360deg);} }
+
+  /* Diff viewer */
+  #diffbox { display: none; }
+  #diffbox.show { display: block; }
+  #diffbox pre {
+    background: #0b1120; border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px; font-family: var(--mono); font-size: 12px;
+    max-height: 320px; overflow: auto; white-space: pre;
+  }
+  .d-add { color: var(--accent); background: rgba(52,211,153,.08); display: block; }
+  .d-del { color: var(--rose); background: rgba(251,113,133,.08); display: block; }
+  .d-hdr { color: var(--blue); font-weight: 600; display: block; }
+  .d-ctx { display: block; }
+
+  /* PR button */
+  #prbox { display: none; margin-top: 12px; }
+  #prbox.show { display: block; }
+  #prbox a {
+    display: flex; justify-content: center; align-items: center; gap: 8px;
+    border: 1px solid rgba(52,211,153,.5); background: var(--accent-dim);
+    color: var(--accent); border-radius: 8px; padding: 11px 18px;
+    font-size: 13px; font-weight: 600; text-decoration: none;
+  }
+  #prbox a:hover { background: rgba(52,211,153,.22); }
+
+  /* Tracked repos */
+  .repo-item {
+    display: flex; justify-content: space-between; align-items: center;
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 14px; margin-bottom: 8px;
+  }
+  .repo-item .name { font-family: var(--mono); font-size: 13px; }
+  .badge-active {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid rgba(52,211,153,.4); background: var(--accent-dim);
+    color: var(--accent); border-radius: 999px; padding: 2px 10px;
+    font-size: 11px; font-family: var(--mono); margin-right: 10px;
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
+         display: inline-block; animation: glow 1.8s infinite; }
+  .empty { color: var(--faint); font-size: 13px; }
+  .meta { font-family: var(--mono); font-size: 10px; color: var(--faint); margin-top: 2px; }
+
+  /* Fixes feed */
+  .fix-item { border: 1px solid var(--border); border-radius: 8px;
+              padding: 12px 14px; margin-bottom: 8px; }
+  .fix-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .fix-title { font-size: 13px; color: var(--text); font-weight: 600; }
+  .fix-meta { font-family: var(--mono); font-size: 10px; color: var(--faint); margin-top: 3px; }
+  .pr-link {
+    flex-shrink: 0; font-family: var(--mono); font-size: 11px;
+    border: 1px solid rgba(52,211,153,.5); background: var(--accent-dim);
+    color: var(--accent); border-radius: 6px; padding: 5px 10px; text-decoration: none;
+  }
+  .pr-link:hover { background: rgba(52,211,153,.22); }
+  details summary { cursor: pointer; font-size: 11px; color: var(--faint); margin-top: 8px; }
+  details pre { margin-top: 8px; background: #0b1120; border: 1px solid var(--border);
+                border-radius: 8px; padding: 10px; font-size: 11px; max-height: 220px; overflow: auto; }
+
+  footer { margin-top: 30px; padding-top: 18px; border-top: 1px solid var(--border);
+           text-align: center; font-size: 11px; color: var(--faint); }
+</style>
 </head>
+<body>
+<div class="wrap">
 
-<body x-data="patchDashboard" class="grain min-h-screen bg-slate-950 text-slate-100
-     font-sans antialiased selection:bg-emerald-500/30">
-
-<div class="relative z-10 mx-auto max-w-4xl px-6 py-12">
-
-  <!-- Header -->
-  <header class="mb-10 flex items-center justify-between border-b border-slate-800 pb-6">
+  <header>
     <div>
-      <h1 class="font-mono text-2xl font-semibold tracking-tight text-slate-50">Patch</h1>
-      <p class="mt-1 text-sm text-slate-500">Autonomous GitHub issue triage &amp; patch generation.</p>
+      <h1>Patch</h1>
+      <div class="tagline">Autonomous GitHub issue triage &amp; patch generation.</div>
     </div>
-    <span class="rounded-full border border-emerald-700/60 bg-emerald-900/20 px-3 py-1
-                 text-[11px] font-medium tracking-wide text-emerald-400 badge-glow">
-      pipeline&nbsp;ready
-    </span>
+    <div class="pill">pipeline&nbsp;ready</div>
   </header>
 
-  <!-- Run state badge -->
-  <div class="mb-6">
-    <template x-if="state !== 'idle'">
-      <span class="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-[11px] font-mono"
-            :class="{
-              'border-sky-700/60 bg-sky-900/20 text-sky-400 badge-glow':      state === 'running',
-              'border-emerald-700/60 bg-emerald-900/20 text-emerald-400':     state === 'success',
-              'border-rose-700/60 bg-rose-900/20 text-rose-400':              state === 'error',
-            }">
-        <span x-text="state"></span>
-      </span>
-    </template>
+  <!-- ============ Manual patch generation ============ -->
+  <div class="card" id="manual-card">
+    <h2>Manual patch generation</h2>
+    <form id="patchForm">
+      <div class="row">
+        <label><span>GitHub repository</span>
+          <input class="mono" id="repo" placeholder="owner/repo" required>
+        </label>
+        <label><span>Target file path</span>
+          <input class="mono" id="filePath" placeholder="main.py" required>
+        </label>
+      </div>
+      <label><span>Issue title</span>
+        <input id="issueTitle" placeholder="Crash when name is None" required>
+      </label>
+      <label><span>Description / traceback</span>
+        <textarea class="mono" id="errContext" rows="5" required
+          placeholder="Paste the error, repro steps, or what should change…"></textarea>
+      </label>
+      <button id="submitBtn" type="submit">Generate Patch &amp; Open PR</button>
+    </form>
   </div>
 
-  <!-- Form -->
-  <form class="space-y-5 rounded-xl border border-slate-800 bg-slate-900/60 p-6"
-        @submit.prevent="run()">
+  <!-- ============ Execution log ============ -->
+  <div class="card" id="logCard" style="display:none">
+    <h2>Execution log</h2>
+    <div id="logbox" class="show"></div>
+  </div>
 
-    <div class="grid gap-5 sm:grid-cols-2">
-      <label class="block">
-        <span class="mb-1.5 block text-xs font-medium text-slate-400">GitHub repository</span>
-        <div class="relative">
-          <i data-lucide="github" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500"></i>
-          <input x-model.trim="form.repo" type="text" placeholder="owner/repo" required
-                 class="w-full rounded-lg border border-slate-700 bg-slate-800/70 py-2.5 pl-10 pr-3
-                        text-sm font-mono placeholder-slate-600 outline-none
-                        focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600/40" />
-        </div>
-      </label>
-
-      <label class="block">
-        <span class="mb-1.5 block text-xs font-medium text-slate-400">Target file path</span>
-        <div class="relative">
-          <i data-lucide="file-code-2" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500"></i>
-          <input x-model.trim="form.path" type="text" placeholder="main.py" required
-                 class="w-full rounded-lg border border-slate-700 bg-slate-800/70 py-2.5 pl-10 pr-3
-                        text-sm font-mono placeholder-slate-600 outline-none
-                        focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600/40" />
-        </div>
-      </label>
+  <!-- ============ Diff + PR link ============ -->
+  <div id="diffbox">
+    <div class="card">
+      <h2>Syntax-highlighted diff</h2>
+      <pre id="diffPre"></pre>
     </div>
-
-    <label class="block">
-      <span class="mb-1.5 block text-xs font-medium text-slate-400">Issue title</span>
-      <div class="relative">
-        <i data-lucide="bug" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500"></i>
-        <input x-model.trim="form.title" type="text" placeholder="Crash when name is None" required
-               class="w-full rounded-lg border border-slate-700 bg-slate-800/70 py-2.5 pl-10 pr-3
-                      text-sm placeholder-slate-600 outline-none
-                      focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600/40" />
-      </div>
-    </label>
-
-    <label class="block">
-      <span class="mb-1.5 block text-xs font-medium text-slate-400">Description / traceback</span>
-      <textarea x-model.trim="form.context" rows="6" required
-                placeholder="Paste the error, repro steps, or what should change…"
-                class="w-full rounded-lg border border-slate-700 bg-slate-800/70 px-3 py-2.5
-                       text-sm font-mono placeholder-slate-600 outline-none
-                       focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600/40"></textarea>
-    </label>
-
-    <button type="submit" :disabled="state === 'running'"
-            class="flex w-full items-center justify-center gap-2 rounded-lg border
-                   border-emerald-600/50 bg-emerald-600/10 py-3 text-sm font-medium text-emerald-400
-                   transition hover:bg-emerald-600/20 disabled:cursor-not-allowed disabled:opacity-40">
-      <i data-lucide="git-pull-request-arrow" class="h-4 w-4"></i>
-      <span x-text="state === 'running' ? 'Running pipeline…' : 'Generate Patch &amp; Open PR'"></span>
-    </button>
-  </form>
-
-  <!-- Execution log -->
-  <template x-if="logs.length">
-    <section class="mt-8">
-      <h2 class="mb-3 font-mono text-xs uppercase tracking-widest text-slate-500">Execution log</h2>
-      <div class="h-64 overflow-y-auto rounded-xl border border-slate-800 bg-black/40 p-4"
-           x-ref="logbox">
-        <template x-for="(line, i) in logs" :key="i">
-          <div class="flex items-start gap-3 py-1 font-mono text-[13px] leading-5"
-               :class="line.kind === 'err' ? 'text-rose-400' : 'text-slate-400'">
-            <template x-if="line.kind === 'ok'">
-              <i data-lucide="check-circle-2" class="mt-0.5 h-4 w-4 shrink-0 text-emerald-500"></i>
-            </template>
-            <template x-if="line.kind === 'err'">
-              <i data-lucide="alert-triangle" class="mt-0.5 h-4 w-4 shrink-0 text-rose-500"></i>
-            </template>
-            <template x-if="line.kind === 'run'">
-              <i data-lucide="loader-2" class="mt-0.5 h-4 w-4 shrink-0 animate-spin text-sky-400"></i>
-            </template>
-            <span x-text="line.text"></span>
-          </div>
-        </template>
-      </div>
-    </section>
-  </template>
-
-  <!-- Diff viewer + PR link -->
-  <template x-if="diff">
-    <section class="mt-8">
-      <h2 class="mb-3 font-mono text-xs uppercase tracking-widest text-slate-500">Generated diff</h2>
-      <pre class="language-diff"><code class="language-diff" x-html="highlightedDiff"></code></pre>
-
-      <a :href="prUrl" target="_blank" rel="noopener"
-         class="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg border
-                border-emerald-600/50 bg-emerald-600/10 py-3 text-sm font-medium text-emerald-400
-                transition hover:bg-emerald-600/20">
-        <i data-lucide="external-link" class="h-4 w-4"></i>
-        <span x-text="'Open Pull Request on GitHub — ' + (prUrl.split('/pull/')[1] ?? '')"></span>
-      </a>
-    </section>
-  </template>
-
-  <!-- Auto-Track Repository -->
-  <section class="mt-10 rounded-xl border border-slate-800 bg-slate-900/60 p-6">
-    <div class="mb-4 flex items-center justify-between">
-      <h2 class="flex items-center gap-2 font-mono text-xs uppercase tracking-widest text-slate-500">
-        <i data-lucide="radio-tower" class="h-4 w-4 text-sky-400"></i> Auto-Track Repository
-      </h2>
-      <span class="text-[11px] text-slate-600">polls every 30s</span>
+    <div id="prbox">
+      <a id="prLink" href="#" target="_blank" rel="noopener">View PR on GitHub →</a>
     </div>
-    <div class="flex gap-3">
-      <div class="relative flex-1">
-        <i data-lucide="github" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500"></i>
-        <input x-model.trim="trackRepo" type="text" placeholder="owner/repo"
-               class="w-full rounded-lg border border-slate-700 bg-slate-800/70 py-2.5 pl-10 pr-3
-                      text-sm font-mono placeholder-slate-600 outline-none
-                      focus:border-sky-600 focus:ring-1 focus:ring-sky-600/40"
-               @keydown.enter.prevent="startTracking()" />
-      </div>
-      <button type="button" @click="startTracking()" :disabled="trackingBusy"
-              class="flex items-center gap-2 rounded-lg border border-sky-600/50 bg-sky-600/10 px-4
-                     py-2.5 text-sm font-medium text-sky-400 transition hover:bg-sky-600/20
-                     disabled:cursor-not-allowed disabled:opacity-40">
-        <i data-lucide="play" class="h-4 w-4"></i> Start Tracking
-      </button>
-    </div>
-    <p x-show="trackMsg" x-text="trackMsg" class="mt-3 text-xs"
-       :class="trackOk ? 'text-emerald-400' : 'text-rose-400'"></p>
-  </section>
+  </div>
 
-  <!-- Currently Monitored Repositories -->
-  <section class="mt-8">
-    <h2 class="mb-3 flex items-center gap-2 font-mono text-xs uppercase tracking-widest text-slate-500">
-      <i data-lucide="monitor-dot" class="h-4 w-4 text-emerald-400"></i> Currently Monitored Repositories
-    </h2>
-    <div class="space-y-2">
-      <template x-for="r in tracked" :key="r.repo">
-        <div class="flex items-center justify-between rounded-lg border border-slate-800
-                    bg-slate-900/60 px-4 py-3">
-          <div class="flex items-center gap-3">
-            <span class="inline-flex items-center gap-1.5 rounded-full border border-emerald-700/60
-                        bg-emerald-900/20 px-2.5 py-0.5 text-[11px] font-mono text-emerald-400">
-              <span class="h-1.5 w-1.5 rounded-full bg-emerald-400 badge-glow"></span> Active
-            </span>
-            <span class="font-mono text-sm text-slate-200" x-text="r.repo"></span>
-          </div>
-          <div class="flex items-center gap-4">
-            <span class="text-[11px] text-slate-500 font-mono"
-                  x-text="'since ' + (new Date(r.added_at)).toLocaleTimeString()"></span>
-            <button type="button" @click="untrackRepo(r.repo)"
-                    class="rounded-md border border-slate-700 px-2 py-1 text-[11px]
-                           text-slate-400 transition hover:border-rose-700/60 hover:text-rose-400">
-              <i data-lucide="trash-2" class="h-3 w-3 inline"></i> untrack
-            </button>
-          </div>
-        </div>
-      </template>
-      <p x-show="!tracked.length" class="text-sm text-slate-600">
-        No repositories tracked yet — add one above to arm the auto-triage loop.
-      </p>
+  <!-- ============ Auto-track ============ -->
+  <div class="card">
+    <h2>Auto-track repository <span style="color:var(--blue)">&nbsp;·&nbsp;every 30s</span></h2>
+    <div class="row">
+      <input class="mono" id="trackRepo" placeholder="owner/repo"
+             style="font-family: var(--mono); font-size: 13px;">
+      <div style="flex:0 0 auto;"><button class="blue" id="trackBtn">Start Tracking</button></div>
     </div>
-  </section>
+    <div id="trackMsg" class="error-text"></div>
+    <div id="trackOkMsg" class="ok-text"></div>
+  </div>
 
-  <!-- Recent Automated Fixes -->
-  <section class="mt-8">
-    <h2 class="mb-3 flex items-center gap-2 font-mono text-xs uppercase tracking-widest text-slate-500">
-      <i data-lucide="zap" class="h-4 w-4 text-amber-400"></i> Recent Automated Fixes
-    </h2>
-    <div class="space-y-2">
-      <template x-for="(f, i) in fixes" :key="f.timestamp + i">
-        <div class="rounded-lg border border-slate-800 bg-slate-900/60 px-4 py-3">
-          <div class="flex items-center justify-between gap-4">
-            <div class="min-w-0">
-              <div class="truncate text-sm text-slate-200" x-text="f.issue_title"></div>
-              <div class="mt-0.5 font-mono text-[11px] text-slate-500"
-                   x-text="f.repo + ' · ' + f.file_path"></div>
-            </div>
-            <a :href="f.pr_url" target="_blank" rel="noopener"
-               class="shrink-0 inline-flex items-center gap-1.5 rounded-md border
-                      border-emerald-700/50 bg-emerald-900/20 px-2.5 py-1 text-[11px]
-                      font-mono text-emerald-400 hover:bg-emerald-900/40">
-              <i data-lucide="git-pull-request-arrow" class="h-3 w-3"></i> PR
-            </a>
-          </div>
-          <details class="mt-2">
-            <summary class="cursor-pointer text-[11px] text-slate-500 hover:text-slate-400">show diff</summary>
-            <pre class="language-diff mt-2"><code class="language-diff" x-text="f.patch"></code></pre>
-          </details>
-        </div>
-      </template>
-      <p x-show="!fixes.length" class="text-sm text-slate-600">
-        No fixes generated yet in this session — they will appear here automatically.
-      </p>
-    </div>
-  </section>
+  <div class="card">
+    <h2>Currently monitored repositories</h2>
+    <div id="repoList"><div class="empty">No repositories tracked yet.</div></div>
+  </div>
 
-  <footer class="mt-12 border-t border-slate-800 pt-6 text-center text-xs text-slate-600">
-    Patch · powered by Groq &amp; PyGithub
-  </footer>
+  <div class="card">
+    <h2>Recent automated fixes</h2>
+    <div id="fixList"><div class="empty">No fixes generated yet this session.</div></div>
+  </div>
+
+  <footer>Patch · powered by Groq &amp; PyGithub</footer>
 </div>
 
 <script>
-  // Register the component through Alpine's official API — robust against
-  // load-order issues that previously left the page half-initialized.
-  document.addEventListener('alpine:init', () => {
-    Alpine.data('patchDashboard', () => ({
-      state: 'idle', // idle | running | success | error
-      form: { repo: '', path: '', title: '', context: '' },
-      logs: [], diff: '', prUrl: '', highlightedDiff: '',
-      trackRepo: '', trackMsg: '', trackOk: false, trackingBusy: false,
-      tracked: [], fixes: [],
+"use strict";
+// ---------------------------------------------------------------- state ---
+var state = { tracked: [], fixes: [] };
 
-      log(kind, text) {
-        this.logs.push({ kind, text });
-        this.$nextTick(() => {
-          const box = this.$refs.logbox;
-          if (box) box.scrollTop = box.scrollHeight;
-        });
-      },
+function $(id) { return document.getElementById(id); }
+function esc(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function showLog(kind, text) {
+  var box = $("logbox");
+  $("logCard").style.display = "";
+  box.classList.add("show");
+  var line = document.createElement("div");
+  line.className = "logline " + kind;
+  var k = document.createElement("span");
+  k.className = "k";
+  k.textContent = kind === "ok" ? "✓" : kind === "err" ? "✕" : "⟳";
+  if (kind === "run") k.classList.add("spin");
+  line.appendChild(k);
+  line.appendChild(document.createTextNode(" " + text));
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+}
+function clearLog() {
+  $("logbox").innerHTML = "";
+  $("logCard").style.display = "none";
+}
 
-      reset() { this.logs = []; this.diff = ''; this.prUrl = ''; this.highlightedDiff = ''; },
+// Simple diff syntax highlighting: colorize +, -, @@, ---, +++
+function highlightDiff(diffText) {
+  var out = [];
+  var lines = String(diffText).split("\\n");
+  for (var i = 0; i < lines.length; i++) {
+    var l = esc(lines[i]);
+    var cls = "";
+    if (/^\\+/.test(lines[i]) && !/^\\+\\+\\+/.test(lines[i])) cls = "d-add";
+    else if (/^-/.test(lines[i]) && !/^---/.test(lines[i])) cls = "d-del";
+    else if (/^@@/.test(lines[i]) || /^---/.test(lines[i]) || /^\\+\\+\\+/.test(lines[i])) cls = "d-hdr";
+    else cls = "d-ctx";
+    out.push('<code class="' + cls + '">' + l + "</code>");
+  }
+  return out.join("\\n");
+}
 
-      run() {
-        this.reset();
-        this.state = 'running';
-        this.log('run', `Starting pipeline for ${this.form.repo}/${this.form.path} …`);
+// ---------------------------------------------------- manual pipeline ----
+$("patchForm").addEventListener("submit", function (e) {
+  e.preventDefault();
+  var repo = $("repo").value.trim();
+  var path = $("filePath").value.trim();
+  var title = $("issueTitle").value.trim();
+  var ctxv = $("errContext").value.trim();
+  if (!repo || !path || !title || !ctxv) {
+    alert("All fields are required");
+    return;
+  }
 
-        fetch('/webhook/trigger-fix', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            repo_name: this.form.repo,
-            file_path: this.form.path,
-            issue_title: this.form.title,
-            error_context: this.form.context,
-          }),
-        })
-        .then(r => r.json().then(j => ({ ok: r.ok, j })))
-        .then(({ ok, j }) => {
-          if (ok) {
-            this.log('ok', j.pull_request_url);
-            this.prUrl = j.pull_request_url;
-            this.diff = j.patch ?? '';
-            this.highlightedDiff = Prism.highlight(
-              this.diff,
-              Prism.languages.diff,
-              'diff'
-            );
-            this.state = 'success';
-            this.log('ok', 'Pull request opened successfully.');
-          } else {
-            this.state = 'error';
-            this.log('err', (j.detail ?? 'unknown error').toString());
-          }
-        })
-        .catch(e => { this.state = 'error'; this.log('err', String(e)); });
-      },
+  $("submitBtn").disabled = true;
+  clearLog();
+  $("diffbox").classList.remove("show");
+  $("prbox").classList.remove("show");
+  showLog("run", "Starting pipeline for " + repo + " › " + path + " …");
+  showLog("run", "Fetching file, asking Groq, forking, opening PR …");
 
-      async startTracking() {
-        this.trackMsg = '';
-        if (!this.trackRepo) { this.trackMsg = 'enter owner/repo first'; this.trackOk = false; return; }
-        this.trackingBusy = true;
-        try {
-          const r = await fetch('/api/track', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ repo: this.trackRepo }),
-          });
-          const j = await r.json();
-          if (r.ok) {
-            this.trackOk = true;
-            this.trackMsg = `now tracking ${this.trackRepo} — auto-triage armed`;
-            this.trackRepo = ''
-          } else {
-            this.trackOk = false;
-            this.trackMsg = j.detail ?? 'failed to track';
-          }
-        } catch (e) { this.trackOk = false; this.trackMsg = String(e); }
-        this.trackingBusy = false;
-        await this.refreshTracking();
-      },
-
-      async untrackRepo(repo) {
-        await fetch(`/api/track/${repo.split('/')[0]}/${repo.split('/')[1]}`, { method: 'DELETE' });
-        await this.refreshTracking();
-      },
-
-      async refreshTracking() {
-        try {
-          const [t, f] = await Promise.all([
-            fetch('/api/tracked').then(r => r.json()),
-            fetch('/api/fixes').then(r => r.json()),
-          ]);
-          this.tracked = t.tracked ?? [];
-          this.fixes = f.fixes ?? [];
-        } catch (e) { /* best-effort */ }
-      },
-    }));
-  });
-
-  // Initial icon pass + one initial tracking refresh once Alpine is up.
-  document.addEventListener('DOMContentLoaded', () => {
-    try { if (window.lucide) lucide.createIcons(); } catch (e) { /* CDN not ready */ }
-    setTimeout(() => {
-      try {
-        const ctx = Alpine.$data(document.body);
-        if (ctx && ctx.refreshTracking) ctx.refreshTracking();
-      } catch (e) { /* Alpine not ready yet, poller below covers it */ }
-    }, 100);
-  });
-
-  // Re-render icons whenever Alpine injects new <i data-lucide> nodes.
-  const observer = new MutationObserver(() => {
-    if (window.lucide && document.body) lucide.createIcons();
-  });
-  function attachObserver() {
-    if (document.body) {
-      observer.observe(document.body, { childList: true, subtree: true });
+  fetch("/webhook/trigger-fix", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      repo_name: repo, file_path: path,
+      issue_title: title, error_context: ctxv
+    })
+  })
+  .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+  .then(function (res) {
+    $("submitBtn").disabled = false;
+    if (res.ok) {
+      showLog("ok", res.j.pull_request_url);
+      showLog("ok", "Pull request opened successfully.");
+      renderDiffBox(res.j.patch || "", res.j.pull_request_url);
     } else {
-      setTimeout(attachObserver, 50);
+      showLog("err", String(res.j.detail || "unknown error"));
     }
+  })
+  .catch(function (e) {
+    $("submitBtn").disabled = false;
+    showLog("err", String(e));
+  });
+});
+
+function renderDiffBox(patch, prUrl) {
+  $("diffbox").classList.add("show");
+  $("diffPre").innerHTML = highlightDiff(patch);
+  $("prLink").href = prUrl;
+  $("prLink").textContent = "View PR on GitHub → " + prUrl.split("/pull/")[1];
+}
+
+// ---------------------------------------------------------- tracking ------
+$("trackBtn").addEventListener("click", function () {
+  var repo = $("trackRepo").value.trim();
+  var errMsg = $("trackMsg"), okMsg = $("trackOkMsg");
+  errMsg.classList.remove("show"); okMsg.classList.remove("show");
+  if (!repo) { errMsg.textContent = "Enter owner/repo first."; errMsg.classList.add("show"); return; }
+  $("trackBtn").disabled = true;
+  fetch("/api/track", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ repo: repo })
+  })
+  .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+  .then(function (res) {
+    $("trackBtn").disabled = false;
+    if (res.ok) {
+      okMsg.textContent = "now tracking " + repo + " — auto-triage armed";
+      okMsg.classList.add("show");
+      $("trackRepo").value = "";
+    } else {
+      errMsg.textContent = res.j.detail || "Failed to track.";
+      errMsg.classList.add("show");
+    }
+    loadTracked();
+  })
+  .catch(function (e) { $("trackBtn").disabled = false; errMsg.textContent = String(e); errMsg.classList.add("show"); });
+});
+
+function loadTracked() {
+  fetch("/api/tracked").then(function (r) { return r.json(); }).then(function (j) {
+    state.tracked = j.tracked || [];
+    renderTracked();
+  }).catch(function () { /* best-effort */ });
+}
+
+function renderTracked() {
+  var list = $("repoList");
+  list.innerHTML = "";
+  if (!state.tracked.length) {
+    list.innerHTML = '<div class="empty">No repositories tracked yet.</div>';
+    return;
   }
-  if (document.body) {
-    attachObserver();
-  } else {
-    document.addEventListener('DOMContentLoaded', attachObserver);
+  state.tracked.forEach(function (rec) {
+    var row = document.createElement("div");
+    row.className = "repo-item";
+    var t = new Date(rec.added_at).toLocaleTimeString();
+    row.innerHTML =
+      '<div><span class="badge-active"><span class="dot"></span>Active</span>' +
+      '<span class="name">' + esc(rec.repo) + '</span>' +
+      '<div class="meta">since ' + esc(t) + '</div></div>' +
+      '<div><button class="small" data-repo="' + esc(rec.repo) + '">untrack</button></div>';
+    var btn = row.querySelector("button");
+    btn.addEventListener("click", function () { untrack(rec.repo); });
+    list.appendChild(row);
+  });
+}
+
+function untrack(repo) {
+  var parts = repo.split("/");
+  fetch("/api/track/" + parts[0] + "/" + parts[1], { method: "DELETE" })
+    .then(function () { loadTracked(); });
+}
+
+// ---------------------------------------------------------- fixes feed ----
+function loadFixes() {
+  fetch("/api/fixes").then(function (r) { return r.json(); }).then(function (j) {
+    state.fixes = j.fixes || [];
+    renderFixes();
+  }).catch(function () { /* best-effort */ });
+}
+
+function renderFixes() {
+  var list = $("fixList");
+  list.innerHTML = "";
+  if (!state.fixes.length) {
+    list.innerHTML = '<div class="empty">No fixes generated yet this session.</div>';
+    return;
   }
+  state.fixes.forEach(function (f) {
+    var item = document.createElement("div");
+    item.className = "fix-item";
+    item.innerHTML =
+      '<div class="fix-head">' +
+        '<div><div class="fix-title">' + esc(f.issue_title) + '</div>' +
+        '<div class="fix-meta">' + esc(f.repo) + " · " + esc(f.file_path) +
+        ' · ' + esc(String(f.timestamp).slice(0, 16).replace("T", " ")) + '</div></div>' +
+        '<a class="pr-link" target="_blank" href="' + esc(f.pr_url) + '">PR →</a>' +
+      '</div>' +
+      '<details><summary>show diff</summary>' +
+      '<pre>' + (f.patch ? esc(f.patch.slice(0, 2000)) : "(fetched live)") + '</pre></details>';
+    list.appendChild(item);
+  });
+}
+
+// ------------------------------------------------- refresh loop -----------
+function refreshAll() { loadTracked(); loadFixes(); }
+setInterval(refreshAll, 10000);
+
+// First paint: populate tracked + fixes from the live backend.
+refreshAll();
 </script>
 </body>
 </html>
@@ -451,15 +500,13 @@ class TrackRequest(BaseModel):
     repo: str
 
 
-# In-memory feed of automated fixes (newest first). Not persisted: survives
-# only for this process lifetime, which is fine for a local dashboard.
+# In-memory feed of automated fixes (newest first). Process-lifetime only.
 _fixes_feed: list[dict] = []
 
 
 def _record_fix(
     repo: str, file_path: str, issue_title: str, patch: str, pr_url: str,
 ) -> None:
-    """Insert one dashboard-visible fix entry, capped to the last 50."""
     _fixes_feed.insert(
         0,
         {
@@ -522,8 +569,8 @@ def trigger_fix(payload: IssuePayload):
             original_content=file_content,
         )
         _record_fix(
-            payload.repo_name, payload.file_path, payload.issue_title, patch,
-            pull_request_url,
+            payload.repo_name, payload.file_path, payload.issue_title,
+            patch, pull_request_url,
         )
         return {"status": "success", "pull_request_url": pull_request_url, "patch": patch}
     except HTTPException:
