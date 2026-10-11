@@ -357,6 +357,12 @@ async def poll_once() -> None:
                     print(
                         f"[tracker]   #{issue.number}: pipeline failed: {exc}"
                     )
+                    # The claim already registered this issue as attempted;
+                    # marking it processed here keeps a persistently-failing
+                    # issue from being retried (and spamming forks/PRs) every
+                    # poll cycle. The bot-comment check covers partial success
+                    # (PR opened but comment failed) on later reloads.
+                    mark_processed(repo_name, issue.number)
                 finally:
                     with _inflight_lock:
                         _inflight.discard(issue_key)
