@@ -439,8 +439,10 @@ document.addEventListener('alpine:init', function () {
           } else {
             var pending2 = self.logLines.filter(function (l) { return l.kind === 'run'; });
             for (var k = 0; k < pending2.length; k++) pending2[k].kind = 'err';
-            self.log('err', String(res.j.detail || 'unknown error'));
-            self.toast('Pipeline failed — see log.', false);
+            var msg = String(res.j.detail || 'unknown error');
+            if (res.status === 429) msg = '⏳ ' + msg + ' (server rate limit)';
+            self.log('err', msg);
+            self.toast(res.status === 429 ? 'Slow down — rate limit hit.' : 'Pipeline failed — see log.', false);
           }
           window.refreshIcons && window.refreshIcons();
         })

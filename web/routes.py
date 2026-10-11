@@ -6,10 +6,18 @@ user's Recent Fixes and Monitored Repositories are never served to
 another. The git/Groq pipeline itself is untouched, and the auto-poller
 keeps a single shared worklist; fixes it produces are attributed to the
 session(s) that track the source repo.
+
+Cost protection: an in-memory sliding-window limiter gates the expensive
+endpoints (patch pipeline, tracking) per session AND globally so a
+runaway client (or several) can't burn through the Groq/GitHub quotas.
+Upstream error text (GitHub/Groq subtleties, internal URLs) is mapped to
+safe, human messages before it reaches the client.
 """
 
 import json
+import re
 import threading
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -37,6 +45,77 @@ _lock = threading.Lock()             # guards the maps below (poller thread + ha
 _sid_tracked: dict[str, list[dict]] = {}          # sid -> [{repo, added_at}, ...]
 _repo_subscribers: dict[str, set[str]] = {}       # repo -> {sid, ...}
 _fixes_by_sid: dict[str, list[dict]] = {}         # sid -> [entry, ...] newest first
+
+# ------------------------------------------------------------------------ --
+# Rate limiting (in-memory sliding window; per-process, resets on restart
+# alongside everything else). Two budgets: per-session, and a global cap
+# so several concurrent users can't collectively exhaust the quotas.
+# ------------------------------------------------------------------------ --
+
+_RL_LOCK = threading.Lock()
+_MOVE_TIMES: dict[str, list[float]] = {}          # bucket -> [timestamps]
+
+# (window_seconds, max_events) per bucket
+_LIMITS = {
+    "global_pipeline": (60, 6),     # <=6 patch runs/min across ALL users
+    "per_sid_pipeline": (60, 3),    # each user: <=3 runs/min; 1 run ~5-20s
+    "global_track": (60, 10),
+    "per_sid_track": (60, 4),
+}
+
+
+def _check_rate(bucket: str) -> None:
+    """Raise 429 HTTPException when the bucket's window budget is spent."""
+    window, max_events = _LIMITS[bucket]
+    now = time.monotonic()
+    with _RL_LOCK:
+        times = [t for t in _MOVE_TIMES.setdefault(bucket, []) if now - t < window]
+        if len(times) >= max_events:
+            retry = int(window - (now - times[0])) + 1
+            _MOVE_TIMES[bucket] = times
+            raise HTTPException(
+                status_code=429,
+                detail=f"Too many requests — try again in {retry}s.",
+            )
+        times.append(now)
+        _MOVE_TIMES[bucket] = times
+        # opportunistic sweep of other buckets (cheap, under the same lock)
+        for b, ts in list(_MOVE_TIMES.items()):
+            w = _LIMITS[b][0]
+            _MOVE_TIMES[b] = [t for t in ts if now - t < w]
+
+
+# ------------------------------------------------------------------------ --
+# Upstream error sanitization: never leak GitHub/Groq internals to clients.
+# ------------------------------------------------------------------------ --
+
+def _safe_detail(exc: Exception) -> str:
+    """Map known pipeline errors to human messages; hide everything else."""
+    raw = f"{type(exc).__name__}: {exc}"
+    low = raw.lower()
+    if "no commit found for the ref" in low or "not found" in low and "404" in low:
+        return ("That repository or file doesn't exist (or isn't public). "
+                "Double-check the owner/repo and file path.")
+    if "404" in low:
+        return ("The repository or file couldn't be found. Check the repo "
+                "name and file path — the extension is optional.")
+    if "rate limit" in low or "429" in low or "secondary rate" in low:
+        return ("Upstream rate limit hit (GitHub or Groq). Wait a minute "
+                "and try again.")
+    if "bad credentials" in low or "401" in low or "unauthorized" in low:
+        return ("The server's API token was rejected. Ping the maintainer — "
+                "this isn't something you did.")
+    if "groq" in low or "too large" in low or "context length" in low:
+        return ("The LLM couldn't process this file (too big or awkward to "
+                "patch). Try a smaller or more targeted file.")
+    if "nothing to commit" in low:
+        return ("The generated patch made no changes to the file. Try a more "
+                "detailed issue description.")
+    if "trustanchors" in low or "certificate" in low or "ssl" in low:
+        return "TLS/network hiccup reaching GitHub or Groq. Try again shortly."
+    # Unknown failure: log liberally server-side, say nothing useful client-side
+    print(f"[routes] unmapped pipeline error: {raw}")
+    return "Pipeline failed unexpectedly. The server log has the details."
 
 
 class IssuePayload(BaseModel):
@@ -175,18 +254,27 @@ def api_track(req: TrackRequest, request: Request, response: Response):
     sid, cookie_resp = _require_sid(request)
     if cookie_resp is not None:
         response.headers["set-cookie"] = cookie_resp.headers["set-cookie"]
+    _check_rate("global_track")
+    _check_rate("per_sid_track")
+    repo = req.repo.strip()
+    # Basic shape validation: owner/repo only, no paths or URLs.
+    if not re.fullmatch(r"[\w.-]+/[\w.-]+", repo or ""):
+        raise HTTPException(
+            status_code=422,
+            detail="Repository must look like 'owner/repo' — no paths or URLs.",
+        )
     try:
-        entry = core.tracker.track(req.repo)   # shared worklist for the poller
+        entry = core.tracker.track(repo)   # shared worklist for the poller
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:  # noqa: BLE001
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=500, detail=_safe_detail(exc)) from exc
 
     with _lock:
         lst = _sid_tracked.setdefault(sid, [])
-        if not any(e["repo"] == req.repo for e in lst):
-            lst.append({"repo": req.repo, "added_at": entry["added_at"]})
-            _repo_subscribers.setdefault(req.repo, set()).add(sid)
+        if not any(e["repo"] == repo for e in lst):
+            lst.append({"repo": repo, "added_at": entry["added_at"]})
+            _repo_subscribers.setdefault(repo, set()).add(sid)
             _save_sessions()
     return {"status": "tracked", "entry": entry}
 
@@ -238,6 +326,8 @@ def trigger_fix(payload: IssuePayload, request: Request, response: Response):
     sid, cookie_resp = _require_sid(request)
     if cookie_resp is not None:
         response.headers["set-cookie"] = cookie_resp.headers["set-cookie"]
+    _check_rate("global_pipeline")
+    _check_rate("per_sid_pipeline")
     try:
         # Empty ref -> auto-detect the repo's default branch (some repos use
         # 'master', 'trunk' etc.; a hardcoded 'main' 404s on those).
@@ -260,4 +350,4 @@ def trigger_fix(payload: IssuePayload, request: Request, response: Response):
     except HTTPException:
         raise
     except Exception as exc:  # noqa: BLE001 - single failure point for the webhook
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=502, detail=_safe_detail(exc)) from exc
