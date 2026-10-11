@@ -1,4 +1,6 @@
 import html
+import asyncio
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
@@ -7,8 +9,24 @@ from pydantic import BaseModel
 import core.analyzer
 import core.fetcher
 import core.pr_creator
+import core.tracker
 
-app = FastAPI(title="Patch")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    core.tracker.load_registry()
+    poller_task = asyncio.create_task(core.tracker.poll_forever(30))
+    try:
+        yield
+    finally:
+        poller_task.cancel()
+        try:
+            await poller_task
+        except asyncio.CancelledError:
+            pass
+
+
+app = FastAPI(title="Patch", lifespan=lifespan)
 
 
 class IssuePayload(BaseModel):
@@ -263,6 +281,34 @@ DASHBOARD_TEMPLATE = r"""<!DOCTYPE html>
 @app.get("/")
 def dashboard() -> HTMLResponse:
     return HTMLResponse(content=_dashboard_html(), status_code=200)
+
+
+class TrackRequest(BaseModel):
+    repo: str
+
+
+@app.post("/api/track")
+def api_track(req: TrackRequest):
+    try:
+        entry = core.tracker.track(req.repo)
+        return {"status": "tracked", "entry": entry}
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.delete("/api/track/{owner}/{repo}")
+def api_untrack(owner: str, repo: str):
+    removed = core.tracker.untrack(f"{owner}/{repo}")
+    if not removed:
+        raise HTTPException(status_code=404, detail=f"{owner}/{repo} is not tracked")
+    return {"status": "untracked", "repo": f"{owner}/{repo}"}
+
+
+@app.get("/api/tracked")
+def api_tracked():
+    return {"tracked": core.tracker.list_tracked()}
 
 
 @app.get("/health")
