@@ -1,9 +1,10 @@
 import asyncio
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 
 import core.analyzer
@@ -28,6 +29,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Patch", lifespan=lifespan)
+
+_ICON_PATH = Path(__file__).resolve().parent / "icon.png"
 
 
 class IssuePayload(BaseModel):
@@ -56,6 +59,7 @@ DASHBOARD_TEMPLATE = """<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="color-scheme" content="dark">
 <title>Patch — Dashboard</title>
+<link rel="icon" type="image/png" href="/icon.png">
 
 <!-- Tailwind CSS (Play CDN) -->
 <script src="https://cdn.tailwindcss.com"></script>
@@ -353,10 +357,8 @@ window.refreshIcons = function () {
                  bg-slate-900/80 backdrop-blur border-b border-slate-800
                  flex items-center justify-between gap-4">
     <div class="flex items-center gap-3">
-      <div class="h-9 w-9 rounded-lg bg-emerald-500/15 border border-emerald-500/40
-                  flex items-center justify-center shadow-[0_0_18px_rgba(16,185,129,.35)]">
-        <i data-lucide="wrench" class="w-5 h-5 text-emerald-400"></i>
-      </div>
+        <img src="/icon.png" alt="Patch logo" class="h-9 w-9 rounded-lg
+                    shadow-[0_0_18px_rgba(16,185,129,.35)] border border-slate-700">
       <div>
         <h1 class="text-lg font-semibold tracking-tight leading-none">Patch</h1>
         <p class="text-[11px] text-slate-500 mt-0.5">Autonomous GitHub issue triage &amp; patch generation</p>
@@ -677,6 +679,13 @@ window.addEventListener('load', function () {
 @app.get("/")
 def dashboard() -> HTMLResponse:
     return HTMLResponse(content=_dashboard_html(), status_code=200)
+
+
+@app.get("/icon.png", include_in_schema=False)
+def icon() -> FileResponse:
+    if not _ICON_PATH.is_file():
+        raise HTTPException(status_code=404, detail="icon.png not found in project root")
+    return FileResponse(_ICON_PATH, media_type="image/png")
 
 
 class TrackRequest(BaseModel):
