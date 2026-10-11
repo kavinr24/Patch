@@ -105,14 +105,17 @@ def trigger_fix(payload: IssuePayload):
     import core.pr_creator
 
     try:
+        # Empty ref -> auto-detect the repo's default branch (some repos use
+        # 'master', 'trunk' etc.; a hardcoded 'main' 404s on those).
+        ref = payload.ref.strip() or core.fetcher.get_default_branch(payload.repo_name)
         file_content = core.fetcher.get_file_content(
-            payload.repo_name, payload.file_path, ref=payload.ref
+            payload.repo_name, payload.file_path, ref=ref
         )
         patch = core.analyzer.generate_patch(
             payload.file_path, file_content, payload.error_context
         )
         pull_request_url = core.pr_creator.apply_patch_and_create_pr(
-            payload.repo_name, payload.file_path, patch, ref=payload.ref,
+            payload.repo_name, payload.file_path, patch, ref=ref,
             original_content=file_content,
         )
         record_fix(

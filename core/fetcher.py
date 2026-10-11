@@ -7,6 +7,11 @@ import config
 _github = Github(config.GITHUB_TOKEN)
 
 
+def get_default_branch(repo_name: str) -> str:
+    """Return the repo's default branch (e.g. 'main' or 'master')."""
+    return _github.get_repo(repo_name).default_branch
+
+
 def get_file_content(repo_name: str, file_path: str, ref: str = "main") -> str:
     """Fetch a file from a GitHub repo at the given ref and return it as UTF-8 text."""
     repo = _github.get_repo(repo_name)
