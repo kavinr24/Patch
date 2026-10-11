@@ -22,12 +22,11 @@ import core.analyzer
 import core.fetcher
 import core.pr_creator
 
-st.set_page_config(page_title="Patch", page_icon="🩹", layout="centered")
+st.set_page_config(page_title="Patch", page_icon=None, layout="centered")
 
-st.title("🩹 Patch")
+st.title("Patch")
 st.caption(
-    "Autonomous GitHub issue triage & patch generation — fetch, LLM-diff, "
-    "and open a PR on any public repo."
+    "Autonomous GitHub issue triage & patch generation."
 )
 
 def resolve_ref(repo_name: str, ref: str) -> str:
