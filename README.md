@@ -1,5 +1,7 @@
 # Patch
 
+<img width="400" height="400" alt="free-crave-81028562 figma site_" src="https://github.com/user-attachments/assets/d39e3573-7691-41ba-84aa-3f50eabe700a" />
+
 Patch is a bot that reads the issue, fixes the code, and opens the PR for you — just watch it do all the work.
 
 ## What it does
