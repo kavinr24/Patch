@@ -198,22 +198,21 @@ def extract_file_paths(text: str) -> list[str]:
     return found
 
 
-def pick_target_file(issue, repo_root_files: list[str]) -> str:
+def pick_target_file(issue, repo_root_files: list[str], repo_name: str) -> str:
     """Choose the file the issue is about.
 
     1st: file mentioned in title/body/traceback that exists in the repo root.
     2nd: default candidates (main.py, app.py, README.md) present in the repo.
     Falls back to the first root file found, raise if the repo has none.
+    ``repo_name`` must be passed explicitly — do NOT rely on issue.repository,
+    which can be a stale/None lazy object on Issue objects collected from a
+    different client instance or after the issue was modified (PR shadows).
     """
-    import core.fetcher as _f  # noqa: F401  (kept for parity; not strictly needed)
-
     text = f"{issue.title or ''}\n{issue.body or ''}"
     mentioned = extract_file_paths(text)
 
-    from github import Github  # noqa: F401
-
     gh = _gh()
-    repo_obj = gh.get_repo(issue.repository.full_name)
+    repo_obj = gh.get_repo(repo_name)
     root_files = repo_root_files or [
         c.path for c in repo_obj.get_contents("", ref=repo_obj.default_branch)
         if getattr(c, "type", "") == "file"
@@ -230,7 +229,7 @@ def pick_target_file(issue, repo_root_files: list[str]) -> str:
             return cand
     if root_files:
         return root_files[0]
-    raise RuntimeError(f"No file candidates found in {issue.repository.full_name}")
+    raise RuntimeError(f"No file candidates found in {repo_name}")
 
 
 def post_issue_comment(issue, pr_url: str) -> None:
@@ -241,16 +240,20 @@ def post_issue_comment(issue, pr_url: str) -> None:
     issue.create_comment(body)
 
 
-def process_issue(issue, ref: str) -> str:
-    """Run the full patch pipeline for a single issue; returns the PR URL."""
+def process_issue(issue, ref: str, repo_name: str) -> str:
+    """Run the full patch pipeline for a single issue; returns the PR URL.
+
+    ``repo_name`` is passed explicitly from poll_once (the poller knows which
+    repo produced the candidate) — reading ``issue.repository`` here is unsafe
+    on stale lazy objects, which caused NoneType crashes in real runs.
+    """
     import core.analyzer
     import core.fetcher
     import core.pr_creator
 
-    repo_name = issue.repository.full_name
     print(f"[tracker]   processing #{issue.number}: {issue.title!r} on {repo_name}")
 
-    file_path = pick_target_file(issue, repo_root_files=[])
+    file_path = pick_target_file(issue, repo_root_files=[], repo_name=repo_name)
     print(f"[tracker]     target file: {file_path}")
 
     file_content = core.fetcher.get_file_content(repo_name, file_path, ref=ref)
@@ -288,7 +291,9 @@ async def poll_once() -> None:
             )
             for issue in issues:
                 try:
-                    pr_url = await loop.run_in_executor(None, process_issue, issue, ref)
+                    pr_url = await loop.run_in_executor(
+                        None, process_issue, issue, ref, repo_name
+                    )
                     await loop.run_in_executor(None, post_issue_comment, issue, pr_url)
                     mark_processed(repo_name, issue.number)
                     if on_fix_callback:
