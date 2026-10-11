@@ -301,6 +301,20 @@ def api_untrack(owner: str, repo: str, request: Request, response: Response):
     return {"status": "untracked", "repo": full}
 
 
+@router.get("/api/poller-status")
+def api_poller_status():
+    """Heartbeat of the background triage loop -- observable, no deploy logs needed."""
+    hb = core.tracker.HEARTBEAT
+    return {
+        "running": bool(hb["started"]),
+        "passes": hb["passes"],
+        "tracked_repos": hb["tracked_repos"],
+        "last_started": hb["last_started"],
+        "last_finished": hb["last_finished"],
+        "last_error": hb["last_error"],
+    }
+
+
 @router.get("/api/tracked")
 def api_tracked(request: Request, response: Response):
     sid, cookie_resp = _require_sid(request)

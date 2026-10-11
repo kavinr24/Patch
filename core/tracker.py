@@ -370,12 +370,32 @@ async def poll_once() -> None:
             print(f"[tracker] {repo_name}: poll failed: {exc}")
 
 
+# Poller heartbeat state, updated by poll_forever below; served by the
+# /api/poller-status endpoint so deploy logs aren't the only way to tell
+# the loop is running.
+HEARTBEAT: dict = {
+    "started": False,
+    "last_started": None,   # iso timestamp of current/last poll pass
+    "last_finished": None,  # iso timestamp when it completed
+    "last_error": None,     # str of the last poll_once crash, if any
+    "passes": 0,
+    "tracked_repos": 0,     # size of the registry at last pass
+}
+
+
 async def poll_forever(interval_seconds: int = DEFAULT_POLL_SECONDS) -> None:
     """Background loop; runs forever until cancelled."""
     load_registry()
+    HEARTBEAT["started"] = True
     while True:
         try:
+            from datetime import datetime as _dt, timezone as _tz
+            HEARTBEAT["last_started"] = _dt.now(_tz.utc).isoformat()
+            HEARTBEAT["tracked_repos"] = len(_registry)
             await poll_once()
+            HEARTBEAT["passes"] += 1
+            HEARTBEAT["last_finished"] = _dt.now(_tz.utc).isoformat()
         except Exception as exc:  # noqa: BLE001 - loop must never die
+            HEARTBEAT["last_error"] = str(exc)
             print(f"[tracker] poll_once crashed: {exc}")
         await asyncio.sleep(interval_seconds)

@@ -311,6 +311,9 @@ document.addEventListener('alpine:init', function () {
     return {
       // ---------------- state ----------------
       backendOnline: null,
+      pollerRunning: false,
+      pollerPasses: 0,
+      pollerLast: '',
       running: false,
       form: { repo: '', filePath: '', issueTitle: '', errorContext: '', ref: '' },
       logLines: [],
@@ -530,6 +533,11 @@ document.addEventListener('alpine:init', function () {
         fetch('/health')
           .then(function (r) { self.backendOnline = r.ok; })
           .catch(function () { self.backendOnline = false; });
+        fetch('/api/poller-status').then(function (r) { return r.json(); }).then(function (j) {
+          self.pollerRunning = !!j.running && j.passes > 0;
+          self.pollerPasses = j.passes || 0;
+          self.pollerLast = j.last_finished || j.last_started || '';
+        }).catch(function () {});
       },
       fmtTime(iso) {
         return String(iso || '').slice(0, 16).replace('T', ' ');
@@ -767,7 +775,12 @@ document.addEventListener('pointermove', function (e) {
           <i data-lucide="radar" class="w-4 h-4 text-violet-300"></i>
           <h2 class="text-[14px] font-semibold tracking-tight text-zinc-100">Auto-track repository</h2>
         </div>
-        <p class="text-[12px] text-zinc-500 mb-5">Scan tracked repos for new issues every 30 seconds.</p>
+        <p class="text-[12px] text-zinc-500 mb-5">Scan tracked repos for new issues every 30 seconds.
+          <span class="text-[11px] font-mono block" :class="pollerRunning ? 'text-violet-300' : 'text-zinc-600'"
+             x-text="pollerRunning
+                  ? ('poller: run #' + pollerPasses + (pollerLast ? ' · last finished ' + pollerLast.slice(11,19) : ' · scanning…'))
+                  : 'poller: starting…'"></span>
+        </p>
 
         <div class="flex gap-2">
           <input x-model="trackRepo" @keydown.enter="addTrack" placeholder="owner/repo" autocomplete="off"
