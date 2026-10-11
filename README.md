@@ -1,3 +1,5 @@
+### JUDGES, when testing Patch's auto-track feature, please run it on an inactive repo without a bunch of open issues, or Patch will try and fix all of them at once and take a lot longer. Some of my old repos like kavinr24/rake or kavinr24/Tempo would work fine.
+
 # Patch
 
 <img width="400" height="400" alt="free-crave-81028562 figma site_" src="https://github.com/user-attachments/assets/d39e3573-7691-41ba-84aa-3f50eabe700a" />
