@@ -33,28 +33,39 @@ def _run(cmd: list[str], cwd: str | None = None) -> subprocess.CompletedProcess:
 
 
 def _ensure_fork(gh: Github, upstream) -> object:
-    """Return the authenticated user's fork of `upstream`, creating it if needed."""
+    """Return the authenticated user's fork of `upstream`, creating it if needed.
+
+    Always returns a Repository — never None. Fork creation on GitHub is
+    asynchronous, so after asking for the fork we poll until it is visible;
+    the caller relies on the returned object (``fork.full_name`` etc.).
+    """
     login = gh.get_user().login
     fork_full_name = f"{login}/{upstream.name}"
     try:
         return gh.get_repo(fork_full_name)
     except Exception:
-        # Fork creation is asynchronous on GitHub's side; poll briefly.
+        pass
+
+    # Fork isn't visible yet: request it, then poll. Creation can also fail
+    # spuriously (e.g. the fork already exists mid-race), so we still poll
+    # before giving up rather than trusting the create call's outcome.
+    create_error: Exception | None = None
+    try:
+        upstream.create_fork()
+    except Exception as exc:
+        create_error = exc
+
+    last_error: Exception | None = create_error
+    for attempt in range(10):
         try:
-            fork = upstream.create_fork()
-        except Exception:
-            for attempt in range(10):
-                try:
-                    return gh.get_repo(fork_full_name)
-                except Exception:
-                    if attempt == 9:
-                        raise
-                    time.sleep(1.5)
-            return fork
+            return gh.get_repo(fork_full_name)
         except Exception as exc:
-            raise RuntimeError(
-                f"Failed to create or access fork {fork_full_name}: {exc}"
-            ) from exc
+            last_error = exc
+            if attempt < 9:
+                time.sleep(1.5)
+    raise RuntimeError(
+        f"Failed to create or access fork {fork_full_name}: {last_error}"
+    ) from last_error
 
 
 def _ensure_diff_header(diff_text: str, file_path: str) -> str:
