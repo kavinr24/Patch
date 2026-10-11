@@ -17,7 +17,7 @@ class IssuePayload(BaseModel):
     file_path: str
     issue_title: str
     error_context: str
-    ref: str = "main"
+    ref: str = ""  # empty/omitted -> auto-detect the repo's default branch
 
 
 class TrackRequest(BaseModel):
