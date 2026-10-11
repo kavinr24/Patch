@@ -410,11 +410,6 @@ window.refreshIcons = function () {
     </div>
     <div class="flex items-center gap-6 text-[13px] text-zinc-500">
       <span class="hidden sm:inline">Autonomous issue triage</span>
-      <span class="flex items-center gap-2">
-        <span class="h-1.5 w-1.5 rounded-full"
-              :class="backendOnline === false ? 'bg-rose-500' : 'bg-emerald-500'"></span>
-        <span x-text="backendOnline === false ? 'Offline' : 'Operational'"></span>
-      </span>
     </div>
   </nav>
 
@@ -593,11 +588,6 @@ window.refreshIcons = function () {
   <!-- ============ Footer ============ -->
   <footer class="mt-14 pt-6 border-t border-slate-800 flex items-center justify-between">
     <p class="text-[11px] text-zinc-600">© 2026 Patch. All rights reserved.</p>
-    <div class="flex items-center gap-2 text-[11px] text-zinc-600">
-      <span class="h-1.5 w-1.5 rounded-full"
-            :class="backendOnline === false ? 'bg-rose-500' : 'bg-emerald-500'"></span>
-      <span x-text="backendOnline === false ? 'System offline' : 'All systems operational'"></span>
-    </div>
   </footer>
 </div>
 
