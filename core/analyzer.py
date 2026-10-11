@@ -1,4 +1,5 @@
 import os
+import re
 
 from dotenv import load_dotenv
 
@@ -54,4 +55,29 @@ def generate_patch(file_path: str, file_content: str, error_context: str) -> str
             f"Groq returned an empty response (finish_reason="
             f"{response.choices[0].finish_reason!r}); increase max_tokens or retry."
         )
-    return content.strip()
+    return _sanitize_diff(content.strip())
+
+
+def _sanitize_diff(raw: str) -> str:
+    """Strip markdown code-block fences, leaving only the raw unified diff.
+
+    Models sometimes wrap output in ```diff ... ``` despite prompt
+    instructions. Removes the fences (and any language tag) and surrounding
+    whitespace so the result can be fed to `git apply` directly.
+    """
+    text = raw.strip()
+    fence_pattern = re.compile(
+        r"^```[a-zA-Z]*\s*\n(?P<body>.*?)\n?```\s*$", re.DOTALL
+    )
+    match = fence_pattern.match(text)
+    if match:
+        text = match.group("body").strip()
+
+    # Defensive: a stray leading fence line (e.g. ```diff) with a malformed
+    # or missing closing fence would still slip past the full-block match.
+    lines = text.splitlines()
+    if lines and lines[0].startswith("```"):
+        lines = lines[1:]
+    if lines and lines[-1].strip() == "````":
+        lines = lines[:-1]
+    return "\n".join(lines).strip()
