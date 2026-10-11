@@ -18,3 +18,4 @@ venv/
 # Local backups (superseded artifacts kept only for manual rollback)
 icon-original-backup.png
 web/dashboard_v1_backup.html
+web/_tracked_sessions.json
