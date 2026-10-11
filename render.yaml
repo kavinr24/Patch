@@ -1,0 +1,28 @@
+# Render Blueprint for Patch
+# Deploys the FastAPI dashboard + auto-triage poller as a single web service.
+#
+# Required environment variables (set in the Render dashboard or here):
+#   GROQ_API_KEY   -- Groq API key (patch generation)
+#   GITHUB_TOKEN   -- GitHub PAT with fork/PR scopes (pipeline writes)
+#
+# NOTE: instances have an ephemeral disk on the free/standard tiers:
+# tracked-repo registries and the in-memory fixes feed reset on redeploy.
+# Increase instance tier + add a persistent disk if you need tracking to
+# survive restarts.
+
+services:
+  - type: web
+    name: patch
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    # Bind 0.0.0.0:$PORT or Render's health checks can't reach the app.
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.13.6"
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
