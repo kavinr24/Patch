@@ -311,7 +311,8 @@ DASHBOARD_TEMPLATE = r"""<!DOCTYPE html>
 </div>
 
 <script>
-  function patch() {
+  // NOTE: must stay a zero-arg function Alpine can call as x-data.
+  window.patch = function patch() {
     return {
       state: 'idle', // idle | running | success | error
       form: { repo: '', path: '', title: '', context: '' },
@@ -403,7 +404,7 @@ DASHBOARD_TEMPLATE = r"""<!DOCTYPE html>
   // before touching the Alpine global, otherwise $data() throws and the
   // whole script dies, leaving the page half-initialized.
   document.addEventListener('alpine:init', () => {
-    lucide.createIcons();
+    if (window.lucide) lucide.createIcons();
     Alpine.effect(() => {
       const ctx = Alpine.$data(document.body);
       if (!ctx) return;
@@ -422,10 +423,24 @@ DASHBOARD_TEMPLATE = r"""<!DOCTYPE html>
     });
   });
   // Re-render icons whenever Alpine injects new <i data-lucide> nodes.
-  const observer = new MutationObserver(() => {
-    if (window.lucide) lucide.createIcons();
+  document.addEventListener('DOMContentLoaded', () => {
+    try { lucide.createIcons(); } catch (e) { /* CDN not ready */ }
   });
-  observer.observe(document.body, { childList: true, subtree: true });
+  const observer = new MutationObserver(() => {
+    if (window.lucide && document.body) lucide.createIcons();
+  });
+  function attachObserver() {
+    if (document.body) {
+      observer.observe(document.body, { childList: true, subtree: true });
+    } else {
+      setTimeout(attachObserver, 50);
+    }
+  }
+  if (document.body) {
+    attachObserver();
+  } else {
+    document.addEventListener('DOMContentLoaded', attachObserver);
+  }
 </script>
 </body>
 </html>
