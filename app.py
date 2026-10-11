@@ -88,27 +88,38 @@ if "_poller_thread" not in st.session_state:
     st.session_state._poller_thread = None
 
 
+# Module-level singleton: session_state is per-browser-session, so two tabs
+# (or double-reruns racing before the first thread registers) would spawn two
+# pollers and the same issue would be triaged twice (two PRs). The guard below
+# is process-wide instead.
+_poller_singleton_lock = threading.Lock()
+_poller_singleton_ref: list = [None]  # [thread or None]
+
+
 def _start_poller_background():
-    """Run core.tracker.poll_forever in a background thread (once per session)."""
-    if st.session_state._poller_thread is not None and st.session_state._poller_thread.is_alive():
-        return
-    started = threading.Event()
+    """Start ONE poll_forever thread per process, not per session."""
+    with _poller_singleton_lock:
+        existing = _poller_singleton_ref[0]
+        if existing is not None and existing.is_alive():
+            return  # already running — do not spawn another
+        started = threading.Event()
 
-    def runner():
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            started.set()
-            loop.run_until_complete(core.tracker.poll_forever(30))
-        except Exception as exc:  # noqa: BLE001 - thread must not die silently
-            print(f"[streamlit poller] crashed: {exc}")
-        finally:
-            loop.close()
+        def runner():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                started.set()
+                loop.run_until_complete(core.tracker.poll_forever(30))
+            except Exception as exc:  # noqa: BLE001 - thread must not die silently
+                print(f"[streamlit poller] crashed: {exc}")
+            finally:
+                loop.close()
 
-    th = threading.Thread(target=runner, daemon=True)
-    th.start()
-    started.wait(timeout=5)
-    st.session_state._poller_thread = th
+        th = threading.Thread(target=runner, daemon=True)
+        th.start()
+        started.wait(timeout=5)
+        _poller_singleton_ref[0] = th
+        st.session_state._poller_thread = th
 
 
 def resolve_ref(repo_name: str, ref: str) -> str:

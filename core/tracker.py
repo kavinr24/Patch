@@ -114,6 +114,28 @@ def mark_processed(repo: str, issue_id: int) -> None:
         save_registry()
 
 
+def claim_issue(repo: str, issue_id: int) -> bool:
+    """Atomically claim an issue for processing. Returns False if already claimed.
+
+    Claims are immediately persisted, so they run across BOTH mechanisms that
+    previously double-fired:
+      * two concurrent processes (Streamlit poller + FastAPI poller, or two
+        Streamlit sessions), and
+      * a crashed pipeline (claim survives, ensuring no infinite retry loop).
+    A claim does not guarantee the pipeline succeeded — a follow-on bot-
+    authored comment check (_has_bot_pr_comment) covers the failed attempt.
+    """
+    entry = _registry.get(repo.strip())
+    if not entry:
+        return False
+    with _inflight_lock:
+        if issue_id in entry["processed_issue_ids"]:
+            return False
+        entry["processed_issue_ids"].append(issue_id)
+        save_registry()
+        return True
+
+
 # --------------------------------------------------------------------------
 # GitHub client and issue scanning
 # --------------------------------------------------------------------------
@@ -274,6 +296,14 @@ def process_issue(issue, ref: str, repo_name: str) -> str:
 
 on_fix_callback = None  # optional hook (repo, file_path, issue_title, patch, pr_url)
 
+# In-flight triage guard: pills multiple concurrent pollers (Streamlit thread
+# + FastAPI lifespan, or accidental double-spawn) from processing the SAME
+# issue simultaneously. Keyed by f"{repo}#{number}".
+import threading as _threading
+
+_inflight_lock = _threading.Lock()
+_inflight: set[str] = set()
+
 
 async def poll_once() -> None:
     """Single polling pass over every tracked repo, triaging new issues."""
@@ -290,12 +320,21 @@ async def poll_once() -> None:
                 f"[tracker] {repo_name}: {len(issues)} new unhandled issue(s)"
             )
             for issue in issues:
+                issue_key = f"{repo_name}#{issue.number}"
+                # Cross-process claim: registered BEFORE the pipeline runs, so
+                # a second poller (other tab / other process) cannot double-fire.
+                if not claim_issue(repo_name, issue.number):
+                    print(
+                        f"[tracker]   #{issue.number}: claimed elsewhere "
+                        f"or already processed, skipping"
+                    )
+                    continue
                 try:
                     pr_url = await loop.run_in_executor(
                         None, process_issue, issue, ref, repo_name
                     )
                     await loop.run_in_executor(None, post_issue_comment, issue, pr_url)
-                    mark_processed(repo_name, issue.number)
+                    mark_processed(repo_name, issue.number)  # keep for safety on re-registry reload
                     if on_fix_callback:
                         # Pull the generated patch text back for the feed.
                         patch_text = ""
@@ -318,6 +357,9 @@ async def poll_once() -> None:
                     print(
                         f"[tracker]   #{issue.number}: pipeline failed: {exc}"
                     )
+                finally:
+                    with _inflight_lock:
+                        _inflight.discard(issue_key)
         except Exception as exc:  # noqa: BLE001 - poll must survive repo errors
             print(f"[tracker] {repo_name}: poll failed: {exc}")
 
