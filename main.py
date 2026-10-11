@@ -31,7 +31,8 @@ def trigger_fix(payload: IssuePayload):
             payload.file_path, file_content, payload.error_context
         )
         pull_request_url = core.pr_creator.apply_patch_and_create_pr(
-            payload.repo_name, payload.file_path, patch, ref=payload.ref
+            payload.repo_name, payload.file_path, patch, ref=payload.ref,
+            original_content=file_content,
         )
         return {"status": "success", "pull_request_url": pull_request_url}
     except HTTPException:

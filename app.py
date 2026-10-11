@@ -118,7 +118,8 @@ if go:
 
             st.write("Forking / branching / applying / opening PR…")
             pull_request_url = core.pr_creator.apply_patch_and_create_pr(
-                repo_name, file_path, patch, ref=ref
+                repo_name, file_path, patch, ref=ref,
+                original_content=file_content,
             )
             status.update(
                 label="Pipeline finished ✔", state="complete", expanded=True

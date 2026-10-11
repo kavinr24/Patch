@@ -74,6 +74,90 @@ def _ensure_diff_header(diff_text: str, file_path: str) -> str:
     return "\n".join(fixed)
 
 
+def _iter_hunk_ops(diff_text: str):
+    """Yield (old_start, ops) with ops as (kind, text), kind in {' ', '+', '-'}.
+
+    Tolerates fabricated context and bogus counts; only the +/- operations
+    are treated as meaningful.
+    """
+    hunk_re = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@.*$")
+    old_start = None
+    ops = []
+    for line in diff_text.splitlines():
+        m = hunk_re.match(line)
+        if m:
+            if old_start is not None:
+                yield old_start, ops
+            old_start = int(m.group(1))
+            ops = []
+            continue
+        if old_start is None:
+            continue
+        if line.startswith((" ", "+", "-")):
+            kind = line[0]
+            text = line[1:]
+            if kind == " " and text == "":
+                # blank context marker
+                ops.append((" ", ""))
+            else:
+                ops.append((kind, text))
+        elif line.startswith("\\"):
+            continue  # "No newline at end of file" marker
+    if old_start is not None:
+        yield old_start, ops
+
+
+def _semantic_apply(original_text: str, diff_text: str) -> str:
+    """Reconstruct the patched file from +/- ops, ignoring fabricated context.
+
+    Fallback for LLM diffs whose context lines don't match the real file
+    (git apply fails on those). We trust only the + and - operations and
+    their approximate positions, then rebuild the file text directly.
+    """
+    lines = original_text.splitlines()
+    ends_with_newline = original_text.endswith("\n")
+    delta = 0  # accumulated index shift from earlier hunks
+    applied = {"+": 0, "-": 0}
+
+    for old_start, ops in _iter_hunk_ops(diff_text):
+        pointer = max(old_start - 1 + delta, 0)
+        for kind, text in ops:
+            if kind == " ":
+                # advance past claimed context if it actually matches
+                if pointer < len(lines) and lines[pointer] == text:
+                    pointer += 1
+                else:
+                    pointer = min(pointer + 1, len(lines))
+            elif kind == "+":
+                pointer = min(pointer, len(lines))
+                lines.insert(pointer, text)
+                pointer += 1
+                delta += 1
+                applied["+"] += 1
+            elif kind == "-":
+                # find the line to remove, searching forward from pointer
+                idx = next(
+                    (j for j in range(pointer, len(lines)) if lines[j] == text),
+                    None,
+                )
+                if idx is not None:
+                    del lines[idx]
+                    delta -= 1
+                    applied["-"] += 1
+                # not found: fabricated removal, skip it
+
+    if not applied["+"] and not applied["-"]:
+        raise RuntimeError(
+            "Semantic apply found no + or - operations to apply; refusing to "
+            "produce an empty change."
+        )
+
+    result = "\n".join(lines)
+    if ends_with_newline or result:
+        result += "\n"
+    return result
+
+
 def _fix_hunk_counts(diff_text: str) -> str:
     """Recompute hunk headers (`@@ -a,b +c,d @@`) with correct line counts.
 
@@ -120,6 +204,7 @@ def apply_patch_and_create_pr(
     file_path: str,
     patched_content: str,
     ref: str = "main",
+    original_content: str | None = None,
 ) -> str:
     """Fork the repo if needed, apply the diff on a new branch, and open a PR.
 
@@ -130,6 +215,9 @@ def apply_patch_and_create_pr(
         file_path: the file the diff targets (used for the commit message).
         patched_content: a raw unified diff, as produced by core.analyzer.
         ref: the base branch of the upstream repo to PR against.
+        original_content: the file's current content (from core.fetcher).
+            Enables a semantic-apply fallback when the LLM's diff has
+            fabricated context lines that plain `git apply` rejects.
     Returns:
         The URL of the opened pull request on the upstream repo.
     """
@@ -168,10 +256,27 @@ def apply_patch_and_create_pr(
             )
             diff_path = diff_file.name
 
+        semantic_applied = False
         try:
             _run(["git", "apply", "--whitespace=nowarn", diff_path], cwd=tmp)
+        except RuntimeError:
+            if original_content is None:
+                raise
+            # LLM diff has fabricated/mismatched context: rebuild the file
+            # directly from the +/- operations instead.
+            new_text = _semantic_apply(original_content, patched_content)
+            target = os.path.join(tmp, file_path.replace("/", os.sep))
+            os.makedirs(os.path.dirname(target) or tmp, exist_ok=True)
+            with open(target, "w", encoding="utf-8", newline="") as f:
+                f.write(new_text)
+            semantic_applied = True
         finally:
             os.unlink(diff_path)
+
+        if semantic_applied:
+            # Unstage any partial state from the failed git apply, keeping
+            # the working tree (which now holds the semantic result).
+            _run(["git", "reset", "--mixed", "HEAD"], cwd=tmp)
 
         _run(["git", "add", "-A"], cwd=tmp)
         _run(
