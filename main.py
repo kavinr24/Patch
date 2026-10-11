@@ -82,7 +82,7 @@ DASHBOARD_TEMPLATE = r"""<!DOCTYPE html>
   </style>
 </head>
 
-<body x-data="patch()" x-cloak class="grain min-h-screen bg-slate-950 text-slate-100
+<body x-data="patch()" class="grain min-h-screen bg-slate-950 text-slate-100
      font-sans antialiased selection:bg-emerald-500/30">
 
 <div class="relative z-10 mx-auto max-w-4xl px-6 py-12">
@@ -399,24 +399,32 @@ DASHBOARD_TEMPLATE = r"""<!DOCTYPE html>
     };
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
+  // Alpine is defer-loaded: wait for 'alpine:init' (NOT DOMContentLoaded)
+  // before touching the Alpine global, otherwise $data() throws and the
+  // whole script dies, leaving the page half-initialized.
+  document.addEventListener('alpine:init', () => {
     lucide.createIcons();
-    const ctx = Alpine.$data(document.body);
-    const refresh = async () => {
-      try {
-        const [t, f] = await Promise.all([
-          fetch('/api/tracked').then(r => r.json()),
-          fetch('/api/fixes').then(r => r.json()),
-        ]);
-        ctx.tracked = t.tracked ?? [];
-        ctx.fixes = f.fixes ?? [];
-      } catch (e) { /* dashboard polling is best-effort */ }
-    };
-    refresh();
-    setInterval(refresh, 10000);
+    Alpine.effect(() => {
+      const ctx = Alpine.$data(document.body);
+      if (!ctx) return;
+      const refresh = async () => {
+        try {
+          const [t, f] = await Promise.all([
+            fetch('/api/tracked').then(r => r.json()),
+            fetch('/api/fixes').then(r => r.json()),
+          ]);
+          ctx.tracked = t.tracked ?? [];
+          ctx.fixes = f.fixes ?? [];
+        } catch (e) { /* dashboard polling is best-effort */ }
+      };
+      refresh();
+      setInterval(refresh, 10000);
+    });
   });
   // Re-render icons whenever Alpine injects new <i data-lucide> nodes.
-  const observer = new MutationObserver(() => lucide.createIcons());
+  const observer = new MutationObserver(() => {
+    if (window.lucide) lucide.createIcons();
+  });
   observer.observe(document.body, { childList: true, subtree: true });
 </script>
 </body>
