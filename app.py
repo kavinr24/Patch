@@ -15,7 +15,9 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import streamlit as st
+from github import Github
 
+import config
 import core.analyzer
 import core.fetcher
 import core.pr_creator
@@ -27,6 +29,14 @@ st.caption(
     "Autonomous GitHub issue triage & patch generation — fetch, LLM-diff, "
     "and open a PR on any public repo."
 )
+
+def resolve_ref(repo_name: str, ref: str) -> str:
+    """Return the branch to use: the given one, or the repo's default branch."""
+    if ref.strip():
+        return ref.strip()
+    gh = Github(config.GITHUB_TOKEN)
+    return gh.get_repo(repo_name).default_branch
+
 
 with st.sidebar:
     st.header("Target")
@@ -42,8 +52,10 @@ with st.sidebar:
     )
     ref = st.text_input(
         "Base branch",
-        value="main",
-        help="Branch to fetch from and PR against (e.g. main, master).",
+        value="",
+        placeholder="auto-detect default branch",
+        help="Leave empty to auto-detect the repo's default branch "
+        "(or enter one explicitly: main, master, ...).",
     )
     st.divider()
     st.markdown(
@@ -75,7 +87,8 @@ if go:
     st.divider()
 
     try:
-        with st.status("Running pipeline…", expanded=False) as status:
+        ref = resolve_ref(repo_name, ref)
+        with st.status(f"Running pipeline… (branch: {ref})", expanded=False) as status:
             st.write(f"Fetching `{file_path}` from `{repo_name}` (ref `{ref}`)…")
             file_content = core.fetcher.get_file_content(repo_name, file_path, ref=ref)
 
