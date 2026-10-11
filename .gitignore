@@ -14,3 +14,7 @@ venv/
 
 # Editor/OS junk
 .DS_Store
+
+# Local backups (superseded artifacts kept only for manual rollback)
+icon-original-backup.png
+web/dashboard_v1_backup.html
